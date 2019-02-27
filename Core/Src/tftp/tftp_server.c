@@ -20,7 +20,7 @@
 
 #include "lan.h"
 #include "tftp_server.h"
-#include "conf_fn.h"
+//#include "conf_fn.h"
 #include "crc.h"
 #include "mystrcpy.h"
 #include "TFTP_ser_deser.h"

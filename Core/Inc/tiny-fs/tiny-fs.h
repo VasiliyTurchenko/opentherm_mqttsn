@@ -6,8 +6,8 @@
  *  @date 26-Jan-2019
  */
 
-#ifndef _TINY_FS_H
-#define _TINY_FS_H
+#ifndef TINY_FS_H
+#define TINY_FS_H
 
 #ifdef __cplusplus
 extern "C"
@@ -17,12 +17,17 @@ extern "C"
 #include <stdint.h>
 #include <stddef.h>
 #include <limits.h>
-
 #include <stdbool.h>
 
+#include "main.h"
+
 #include "debug.h"
-#include "port.h"
+
+
+#ifndef MCU_TARGET
 #include "mock.h"
+#include "port.h"
+#endif
 
 //#include "stm32f3xx.h"
 

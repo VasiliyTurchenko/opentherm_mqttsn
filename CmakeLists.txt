@@ -36,6 +36,7 @@ message("LDSCRIPTS = " ${LDSCRIPTS})
 add_definitions(-DSTM32F103xB)
 add_definitions(-DUSE_HAL_DRIVER)
 add_definitions(-DDEBUG)
+add_definitions(-DMCU_TARGET)
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
 	message("Compiling with debug info")

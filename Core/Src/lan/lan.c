@@ -23,27 +23,27 @@ static uint8_t mac_addr[6];
 
 // for statistic purpose
 
-volatile uint8_t max_pack_cnt = 0;
-volatile uint32_t eth_filter_misses = 0;
-volatile uint32_t ip_filter_misses = 0;
+static volatile uint8_t max_pack_cnt = 0;
+static volatile uint32_t eth_filter_misses = 0;
+static volatile uint32_t ip_filter_misses = 0;
 
-volatile uint8_t minfreenb = NUM_ETH_BUFFERS;
-volatile uint8_t freenb = NUM_ETH_BUFFERS;
+static volatile uint8_t minfreenb = NUM_ETH_BUFFERS;
+static volatile uint8_t freenb = NUM_ETH_BUFFERS;
 
-volatile uint32_t udp_fits_callbacks = 0u;
-volatile uint32_t udp_callbacks = 0u;
-volatile uint32_t readsocfits = 0u;
-volatile uint32_t socdatalosts = 0u;
-volatile uint32_t socfastreads = 0u;
-volatile uint32_t lan_getmem_errors = 0u;
-volatile uint32_t lan_freemem_errors = 0u;
-volatile uint32_t lan_poll_mallocs = 0u;
-volatile uint32_t lan_poll_frees = 0u;
-volatile uint32_t readsoc_mallocs = 0u;
-volatile uint32_t readsoc_frees = 0u;
-volatile uint32_t wr_mallocs_frees = 0u;
-volatile uint32_t arp_mallocs_frees = 0u;
-volatile uint32_t wr_soc_err = 0u;
+static volatile uint32_t udp_fits_callbacks = 0u;
+static volatile uint32_t udp_callbacks = 0u;
+static volatile uint32_t readsocfits = 0u;
+static volatile uint32_t socdatalosts = 0u;
+static volatile uint32_t socfastreads = 0u;
+static volatile uint32_t lan_getmem_errors = 0u;
+static volatile uint32_t lan_freemem_errors = 0u;
+static volatile uint32_t lan_poll_mallocs = 0u;
+static volatile uint32_t lan_poll_frees = 0u;
+static volatile uint32_t readsoc_mallocs = 0u;
+static volatile uint32_t readsoc_frees = 0u;
+static volatile uint32_t wr_mallocs_frees = 0u;
+static volatile uint32_t arp_mallocs_frees = 0u;
+static volatile uint32_t wr_soc_err = 0u;
 
 // IP address/mask/gateway
 #ifndef WITH_DHCP
@@ -60,8 +60,7 @@ uint8_t eth_buf[NUM_ETH_BUFFERS][ENC28J60_MAXFRAME]; /* ethernet buffers*/
 socket_t sockets[NUM_SOCKETS]; /*  sockets pool */
 /* each net_buf belongs to the one of the sockets */
 /* each eth_buf_state belongs to the one of the sockets*/
-enum EthBufState
-	eth_buf_state[NUM_ETH_BUFFERS]; /* states of the ethernet buffers */
+enum EthBufState eth_buf_state[NUM_ETH_BUFFERS]; /* states of the ethernet buffers */
 
 // ARP cache
 static uint8_t arp_cache_wr;
@@ -96,12 +95,11 @@ uint8_t *mac_to_enc(void);
 //
 uint32_t rtime(void);
 eth_frame_t *udp_packet_callback(eth_frame_t *frame, uint16_t len);
-uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen,
-		   const uint8_t attempts);
+uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen, const uint8_t attempts);
 
 /**
   * assigns a socket from free pool
-  * @param remIP remote IP 
+  * @param remIP remote IP
   * @param remPort remote port
   * @param locPort local port
   * @param mode opening mode - read or write
@@ -109,8 +107,8 @@ uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen,
   * @return socket_p pointer to the socket if OK; NULL otherwise
   *
   */
-socket_p bind_socket(const uint32_t remIP, const uint16_t remPort,
-		     const uint16_t locPort, const uint8_t mode)
+socket_p bind_socket(const uint32_t remIP, const uint16_t remPort, const uint16_t locPort,
+		     const uint8_t mode)
 {
 	taskENTER_CRITICAL(); // call may be nested
 	socket_p result;
@@ -124,13 +122,11 @@ socket_p bind_socket(const uint32_t remIP, const uint16_t remPort,
 				if (sockets[i].buf != NULL) {	*/	/* memory allocated */
 			/* +15-Mar-2018 */ sockets[i].buf = NULL;
 			sockets[i].datalost = SOC_DATA_NOT_LOST;
-			sockets[i].soc_state =
-				SOCK_BUSY; /* mark the socket as busy */
+			sockets[i].soc_state = SOCK_BUSY; /* mark the socket as busy */
 			sockets[i].rem_ip_addr = remIP;
 			sockets[i].rem_port = remPort;
-			sockets[i].last_error = 0U; /* no error */
-			sockets[i].proto =
-				IP_PROTOCOL_UDP; /* currently UDP only */
+			sockets[i].last_error = 0U;	 /* no error */
+			sockets[i].proto = IP_PROTOCOL_UDP; /* currently UDP only */
 			sockets[i].mode = mode;
 			sockets[i].len = 0U;
 			sockets[i].loc_ip_addr = ip_addr;
@@ -187,8 +183,7 @@ socket_p change_soc_mode(socket_p soc, const uint8_t mode)
   */
 socket_p close_socket(socket_p soc)
 {
-	if (soc ==
-	    NULL) { /* function is safe for null pointers (11-Mar-2018) */
+	if (soc == NULL) { /* function is safe for null pointers (11-Mar-2018) */
 		return NULL;
 	}
 	taskENTER_CRITICAL();
@@ -225,8 +220,7 @@ static uint8_t *lan_getmem(void)
 	result = NULL;
 	uint8_t i;
 	for (i = 0u; i < NUM_ETH_BUFFERS; i++) {
-		if (eth_buf_state[i] ==
-		    ETH_BUF_FREE) { /* is this buffer free ?*/
+		if (eth_buf_state[i] == ETH_BUF_FREE) {  /* is this buffer free ?*/
 			result = (uint8_t *)eth_buf[i];  /* return ptr to it */
 			eth_buf_state[i] = ETH_BUF_BUSY; /* mark the buffer */
 			break;
@@ -259,10 +253,8 @@ static uint8_t *lan_freemem(uint8_t *buf)
 		uint8_t i;
 		for (i = 0u; i < NUM_ETH_BUFFERS; i++) {
 			if (((uint8_t *)eth_buf[i] == buf) &&
-			    (eth_buf_state[i] ==
-			     ETH_BUF_BUSY)) { /* is it the buffer ? */
-				eth_buf_state[i] =
-					ETH_BUF_FREE; /* mark the buffer as free*/
+			    (eth_buf_state[i] == ETH_BUF_BUSY)) { /* is it the buffer ? */
+				eth_buf_state[i] = ETH_BUF_FREE;  /* mark the buffer as free*/
 				result = NULL;
 				break;
 			}
@@ -304,12 +296,12 @@ static uint32_t ip_gateway;
 
 #ifdef WITH_DHCP
 
-#define dhcp_add_option(ptr, optcode, type, value)                             \
-	((dhcp_option_t *)ptr)->code = optcode;                                \
-	((dhcp_option_t *)ptr)->len = sizeof(type);                            \
-	*(type *)(((dhcp_option_t *)ptr)->data) = value;                       \
-	ptr += sizeof(dhcp_option_t) + sizeof(type);                           \
-	if (sizeof(type) & 1)                                                  \
+#define dhcp_add_option(ptr, optcode, type, value)                                                 \
+	((dhcp_option_t *)ptr)->code = optcode;                                                    \
+	((dhcp_option_t *)ptr)->len = sizeof(type);                                                \
+	*(type *)(((dhcp_option_t *)ptr)->data) = value;                                           \
+	ptr += sizeof(dhcp_option_t) + sizeof(type);                                               \
+	if (sizeof(type) & 1)                                                                      \
 		*(ptr++) = 0;
 
 void dhcp_filter(eth_frame_t *frame, uint16_t len)
@@ -325,8 +317,7 @@ void dhcp_filter(eth_frame_t *frame, uint16_t len)
 	uint32_t temp;
 
 	// Check if DHCP messages directed to us
-	if ((len >= sizeof(dhcp_message_t)) &&
-	    (dhcp->operation == (uint8_t)DHCP_OP_REPLY) &&
+	if ((len >= sizeof(dhcp_message_t)) && (dhcp->operation == (uint8_t)DHCP_OP_REPLY) &&
 	    (dhcp->transaction_id == dhcp_transaction_id) &&
 	    (dhcp->magic_cookie == DHCP_MAGIC_COOKIE)) {
 		len -= (uint16_t)(sizeof(dhcp_message_t));
@@ -346,16 +337,13 @@ void dhcp_filter(eth_frame_t *frame, uint16_t len)
 					type = *(option->data);
 					break;
 				case DHCP_CODE_SUBNETMASK:
-					offered_net_mask =
-						*(uint32_t *)(option->data);
+					offered_net_mask = *(uint32_t *)(option->data);
 					break;
 				case DHCP_CODE_GATEWAY:
-					offered_gateway =
-						*(uint32_t *)(option->data);
+					offered_gateway = *(uint32_t *)(option->data);
 					break;
 				case DHCP_CODE_DHCPSERVER:
-					renew_server =
-						*(uint32_t *)(option->data);
+					renew_server = *(uint32_t *)(option->data);
 					break;
 				case DHCP_CODE_LEASETIME:
 					temp = *(uint32_t *)(option->data);
@@ -386,8 +374,7 @@ void dhcp_filter(eth_frame_t *frame, uint16_t len)
 		switch (type) {
 		// DHCP offer?
 		case DHCP_MESSAGE_OFFER:
-			if ((dhcp_status == DHCP_WAITING_OFFER) &&
-			    (dhcp->offered_addr != 0)) {
+			if ((dhcp_status == DHCP_WAITING_OFFER) && (dhcp->offered_addr != 0)) {
 				dhcp_status = DHCP_WAITING_ACK;
 
 				// send DHCP request
@@ -397,12 +384,11 @@ void dhcp_filter(eth_frame_t *frame, uint16_t len)
 				udp->from_port = DHCP_CLIENT_PORT;
 
 				op = dhcp->options;
-				dhcp_add_option(op, DHCP_CODE_MESSAGETYPE,
-						uint8_t, DHCP_MESSAGE_REQUEST);
-				dhcp_add_option(op, DHCP_CODE_REQUESTEDADDR,
-						uint32_t, dhcp->offered_addr);
-				dhcp_add_option(op, DHCP_CODE_DHCPSERVER,
-						uint32_t, renew_server);
+				dhcp_add_option(op, DHCP_CODE_MESSAGETYPE, uint8_t,
+						DHCP_MESSAGE_REQUEST);
+				dhcp_add_option(op, DHCP_CODE_REQUESTEDADDR, uint32_t,
+						dhcp->offered_addr);
+				dhcp_add_option(op, DHCP_CODE_DHCPSERVER, uint32_t, renew_server);
 				*(op++) = DHCP_CODE_END;
 
 				dhcp->operation = DHCP_OP_REQUEST;
@@ -410,8 +396,7 @@ void dhcp_filter(eth_frame_t *frame, uint16_t len)
 				dhcp->server_addr = 0;
 				dhcp->flags = DHCP_FLAG_BROADCAST;
 
-				udp_send(frame,
-					 (uint8_t *)op - (uint8_t *)dhcp);
+				udp_send(frame, (uint8_t *)op - (uint8_t *)dhcp);
 			}
 			break;
 
@@ -490,8 +475,7 @@ void dhcp_poll()
 		dhcp->magic_cookie = DHCP_MAGIC_COOKIE;
 
 		op = dhcp->options;
-		dhcp_add_option(op, DHCP_CODE_MESSAGETYPE, uint8_t,
-				DHCP_MESSAGE_DISCOVER);
+		dhcp_add_option(op, DHCP_CODE_MESSAGETYPE, uint8_t, DHCP_MESSAGE_DISCOVER);
 		*(op++) = DHCP_CODE_END;
 
 		udp_send(frame, (uint8_t *)op - (uint8_t *)dhcp);
@@ -517,11 +501,9 @@ void dhcp_poll()
 		dhcp->magic_cookie = DHCP_MAGIC_COOKIE;
 
 		op = dhcp->options;
-		dhcp_add_option(op, DHCP_CODE_MESSAGETYPE, uint8_t,
-				DHCP_MESSAGE_REQUEST);
+		dhcp_add_option(op, DHCP_CODE_MESSAGETYPE, uint8_t, DHCP_MESSAGE_REQUEST);
 		dhcp_add_option(op, DHCP_CODE_REQUESTEDADDR, uint32_t, ip_addr);
-		dhcp_add_option(op, DHCP_CODE_DHCPSERVER, uint32_t,
-				dhcp_server);
+		dhcp_add_option(op, DHCP_CODE_DHCPSERVER, uint32_t, dhcp_server);
 		*(op++) = DHCP_CODE_END;
 
 		if (!udp_send(frame, (uint8_t *)op - (uint8_t *)dhcp)) {
@@ -606,8 +588,7 @@ uint8_t tcp_xmit(tcp_state_t *st, eth_frame_t *frame, uint16_t len)
 	// set checksum
 	plen += sizeof(tcp_packet_t);
 	tcp->cksum = 0;
-	tcp->cksum =
-		ip_cksum(plen + IP_PROTOCOL_TCP, (uint8_t *)tcp - 8, plen + 8);
+	tcp->cksum = ip_cksum(plen + IP_PROTOCOL_TCP, (uint8_t *)tcp - 8, plen + 8);
 
 	// send packet
 	switch (tcp_send_mode) {
@@ -731,8 +712,7 @@ void tcp_filter(eth_frame_t *frame, uint16_t len)
 	len -= tcp_head_size(tcp);
 
 	// me needs only SYN/FIN/ACK/RST
-	tcpflags = tcp->flags &
-		   (TCP_FLAG_SYN | TCP_FLAG_ACK | TCP_FLAG_RST | TCP_FLAG_FIN);
+	tcpflags = tcp->flags & (TCP_FLAG_SYN | TCP_FLAG_ACK | TCP_FLAG_RST | TCP_FLAG_FIN);
 
 	// sending packets back
 	tcp_send_mode = TCP_SENDING_REPLY;
@@ -743,10 +723,8 @@ void tcp_filter(eth_frame_t *frame, uint16_t len)
 	for (id = 0; id < TCP_MAX_CONNECTIONS; ++id) {
 		pst = tcp_pool + id;
 
-		if ((pst->status != TCP_CLOSED) &&
-		    (ip->from_addr == pst->remote_addr) &&
-		    (tcp->from_port == pst->remote_port) &&
-		    (tcp->to_port == pst->local_port)) {
+		if ((pst->status != TCP_CLOSED) && (ip->from_addr == pst->remote_addr) &&
+		    (tcp->from_port == pst->remote_port) && (tcp->to_port == pst->local_port)) {
 			st = pst;
 			break;
 		}
@@ -771,8 +749,7 @@ void tcp_filter(eth_frame_t *frame, uint16_t len)
 				// add embrionic connection to pool
 				st->status = TCP_SYN_RECEIVED;
 				st->event_time = HAL_GetTick();
-				st->seq_num =
-					HAL_GetTick() + (HAL_GetTick() << 16);
+				st->seq_num = HAL_GetTick() + (HAL_GetTick() << 16);
 				st->ack_num = ntohl(tcp->seq_num) + 1;
 				st->remote_addr = ip->from_addr;
 				st->remote_port = tcp->from_port;
@@ -794,8 +771,7 @@ void tcp_filter(eth_frame_t *frame, uint16_t len)
 	else {
 		// connection reset by peer?
 		if (tcpflags & TCP_FLAG_RST) {
-			if ((st->status == TCP_ESTABLISHED) ||
-			    (st->status == TCP_FIN_WAIT)) {
+			if ((st->status == TCP_ESTABLISHED) || (st->status == TCP_FIN_WAIT)) {
 				tcp_closed(id, 1);
 			}
 			st->status = TCP_CLOSED;
@@ -803,8 +779,7 @@ void tcp_filter(eth_frame_t *frame, uint16_t len)
 		}
 
 		// me needs only ack packet
-		if ((ntohl(tcp->seq_num) != st->ack_num) ||
-		    (ntohl(tcp->ack_num) != st->seq_num) ||
+		if ((ntohl(tcp->seq_num) != st->ack_num) || (ntohl(tcp->ack_num) != st->seq_num) ||
 		    (!(tcpflags & TCP_FLAG_ACK))) {
 			return;
 		}
@@ -1000,8 +975,7 @@ void tcp_poll()
 
 				// rexmit SYN/ACK
 				case TCP_SYN_RECEIVED:
-					tcp->flags =
-						TCP_FLAG_SYN | TCP_FLAG_ACK;
+					tcp->flags = TCP_FLAG_SYN | TCP_FLAG_ACK;
 					tcp_xmit(st, frame, 0);
 					break;
 
@@ -1073,8 +1047,8 @@ uint8_t udp_send(eth_frame_t *frame, uint16_t len)
 
 	udp->len = htons(len);
 	udp->cksum = 0;
-	udp->cksum = ip_cksum((uint32_t)(len + (uint32_t)IP_PROTOCOL_UDP),
-			      (uint8_t *)udp - 8, len + 8);
+	udp->cksum =
+		ip_cksum((uint32_t)(len + (uint32_t)IP_PROTOCOL_UDP), (uint8_t *)udp - 8, len + 8);
 
 	return ip_send(frame, len);
 }
@@ -1098,8 +1072,8 @@ void udp_reply(eth_frame_t *frame, uint16_t len)
 	udp->len = htons(len);
 
 	udp->cksum = 0;
-	udp->cksum = ip_cksum((uint32_t)(len + (uint32_t)IP_PROTOCOL_UDP),
-			      (uint8_t *)udp - 8, len + 8);
+	udp->cksum =
+		ip_cksum((uint32_t)(len + (uint32_t)IP_PROTOCOL_UDP), (uint8_t *)udp - 8, len + 8);
 
 	ip_reply(frame, len);
 }
@@ -1109,7 +1083,7 @@ void udp_reply(eth_frame_t *frame, uint16_t len)
   * @param frame pointer to the full ethernet frame
   * @param len length of thr udp packet
   * @return eth_frame_t* changed pointer to the frame or NULL in pointer isn't changed
-  * @note  THREAD - SAFE 
+  * @note  THREAD - SAFE
   */
 eth_frame_t *udp_filter(eth_frame_t *frame, uint16_t len)
 {
@@ -1146,7 +1120,7 @@ eth_frame_t *udp_filter(eth_frame_t *frame, uint16_t len)
 /**
   * processes the ICMP packet
   * @param frame pointer to the full eth. frame
-  * @param len lenght oc ICMP packet  
+  * @param len lenght oc ICMP packet
   * @return none
   */
 void icmp_filter(eth_frame_t *frame, uint16_t len)
@@ -1210,8 +1184,7 @@ uint8_t ip_send(eth_frame_t *frame, uint16_t len)
 			route_ip = ip_gateway;
 		}
 		/* resolve mac address */
-		mac_addr_to = arp_resolve(
-			route_ip); /* it may take time to resolve !*/
+		mac_addr_to = arp_resolve(route_ip); /* it may take time to resolve !*/
 		if (mac_addr_to == NULL) {
 			return 0; // err!
 		}
@@ -1292,8 +1265,7 @@ eth_frame_t *ip_filter(eth_frame_t *frame, uint16_t len)
 
 	if ((packet->ver_head_len == 0x45) &&
 	    (ip_cksum(0, (void *)packet, sizeof(ip_packet_t)) == hcs) &&
-	    ((packet->to_addr == ip_addr) ||
-	     (packet->to_addr == ip_broadcast))) {
+	    ((packet->to_addr == ip_addr) || (packet->to_addr == ip_broadcast))) {
 		len = ntohs(packet->total_len) - sizeof(ip_packet_t);
 
 		switch (packet->protocol) {
@@ -1437,8 +1409,7 @@ void arp_filter(eth_frame_t *frame, uint16_t len)
 	arp_message_t *msg = (void *)(frame->data);
 
 	if (len >= sizeof(arp_message_t)) {
-		if ((msg->hw_type == ARP_HW_TYPE_ETH) &&
-		    (msg->proto_type == ARP_PROTO_TYPE_IP) &&
+		if ((msg->hw_type == ARP_HW_TYPE_ETH) && (msg->proto_type == ARP_PROTO_TYPE_IP) &&
 		    (msg->ip_addr_to == ip_addr)) {
 			switch (msg->type) {
 			case ARP_TYPE_REQUEST:
@@ -1452,15 +1423,12 @@ void arp_filter(eth_frame_t *frame, uint16_t len)
 			case ARP_TYPE_RESPONSE:
 				if (!arp_search_cache(msg->ip_addr_from)) {
 					taskENTER_CRITICAL();
-					arp_cache[arp_cache_wr].ip_addr =
-						msg->ip_addr_from;
-					memcpy(arp_cache[arp_cache_wr].mac_addr,
-					       msg->mac_addr_from, 6);
-					arp_cache[arp_cache_wr].age =
-						(int32_t)ARP_TIMEOUT_MS;
+					arp_cache[arp_cache_wr].ip_addr = msg->ip_addr_from;
+					memcpy(arp_cache[arp_cache_wr].mac_addr, msg->mac_addr_from,
+					       6);
+					arp_cache[arp_cache_wr].age = (int32_t)ARP_TIMEOUT_MS;
 					arp_cache_wr++;
-					if (arp_cache_wr ==
-					    (uint8_t)ARP_CACHE_SIZE) {
+					if (arp_cache_wr == (uint8_t)ARP_CACHE_SIZE) {
 						arp_cache_wr = 0u;
 					}
 					taskEXIT_CRITICAL();
@@ -1490,8 +1458,7 @@ void eth_resend(eth_frame_t *frame, uint16_t len)
 void eth_send(eth_frame_t *frame, uint16_t len)
 {
 	memcpy(frame->from_addr, mac_addr, 6);
-	enc28j60_send_packet((void *)frame,
-			     (uint16_t)(len + (uint16_t)sizeof(eth_frame_t)));
+	enc28j60_send_packet((void *)frame, (uint16_t)(len + (uint16_t)sizeof(eth_frame_t)));
 }
 
 // send Ethernet frame back
@@ -1499,8 +1466,7 @@ void eth_reply(eth_frame_t *frame, uint16_t len)
 {
 	memcpy(frame->to_addr, frame->from_addr, 6);
 	memcpy(frame->from_addr, mac_addr, 6);
-	enc28j60_send_packet((void *)frame,
-			     (uint16_t)(len + (uint16_t)sizeof(eth_frame_t)));
+	enc28j60_send_packet((void *)frame, (uint16_t)(len + (uint16_t)sizeof(eth_frame_t)));
 }
 
 /**
@@ -1516,9 +1482,7 @@ eth_frame_t *eth_filter(eth_frame_t *frame, uint16_t len)
 	if (len >= sizeof(eth_frame_t)) {
 		switch (frame->type) {
 		case ETH_TYPE_ARP:
-			arp_filter(frame,
-				   (uint16_t)(len -
-					      (uint16_t)sizeof(eth_frame_t)));
+			arp_filter(frame, (uint16_t)(len - (uint16_t)sizeof(eth_frame_t)));
 
 			break;
 		case ETH_TYPE_IP:
@@ -1526,8 +1490,7 @@ eth_frame_t *eth_filter(eth_frame_t *frame, uint16_t len)
 			break;
 		default:
 			eth_filter_misses++;
-			put_dump(frame, (unsigned long)0, (int)len,
-				 sizeof(char));
+			put_dump(frame, (unsigned long)0, (int)len, sizeof(char));
 
 			break;
 		}
@@ -1631,16 +1594,14 @@ uint8_t lan_up()
 /* function simply returns time in seconds */
 uint32_t rtime()
 {
-	return (HAL_GetTick() /
-		(uint32_t)1000); // Assume that 1 tick = 1ms!!!!!
+	return (HAL_GetTick() / (uint32_t)1000); // Assume that 1 tick = 1ms!!!!!
 }
 /* end of rtime() */
 
 /* function htonl - host to network byte order */
 uint32_t htonl(uint32_t a)
 {
-	return ((uint32_t)((a >> 24) | (a << 24) |
-			   ((a & (uint32_t)0x00ff0000) >> 8) |
+	return ((uint32_t)((a >> 24) | (a << 24) | ((a & (uint32_t)0x00ff0000) >> 8) |
 			   ((a & (uint32_t)0x0000ff00) << 8)));
 }
 /* end of function htonl - host to network byte order */
@@ -1652,8 +1613,7 @@ uint32_t htonl(uint32_t a)
   * @param  attempts number of attempts by 5ms
   * @return number of received bytes if OK; NULL if not ok, last_error field contains additional info
   */
-uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen,
-		   const uint8_t attempts)
+uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen, const uint8_t attempts)
 {
 	uint16_t result;
 	result = 0x00U;
@@ -1662,9 +1622,8 @@ uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen,
 
 	if (soc == NULL) {
 		goto fExit;
-	} /* bad sockets */
-	if ((soc->mode & SOC_MODE_READ) !=
-	    SOC_MODE_READ) { /* socket open not for reading */
+	}						    /* bad sockets */
+	if ((soc->mode & SOC_MODE_READ) != SOC_MODE_READ) { /* socket open not for reading */
 		soc->last_error = SOC_ERR_WRONG_SOC_MODE;
 		goto fExit;
 	} else {
@@ -1678,12 +1637,10 @@ uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen,
 		/* data arrived here */
 		uintptr_t payload;
 		uintptr_t start_pos;
-		payload = (uintptr_t)
-				  soc->len; /* soc->len is a UDP payload size */
+		payload = (uintptr_t)soc->len; /* soc->len is a UDP payload size */
 		/* if soc->proto != UDP, soc->len means total eth frame size */
 
-		if (soc->proto ==
-		    (uint8_t)IP_PROTOCOL_UDP) { /* include empty UDP */
+		if (soc->proto == (uint8_t)IP_PROTOCOL_UDP) { /* include empty UDP */
 			start_pos = (uintptr_t)UDP_PAYLOAD_START;
 		} else {
 			start_pos = 0U;
@@ -1719,8 +1676,7 @@ uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen,
 				payload--;
 			}
 		}
-		soc->mode =
-			soc->mode & (~SOC_NEW_DATA); /*clear new data flag */
+		soc->mode = soc->mode & (~SOC_NEW_DATA); /*clear new data flag */
 		/* free soc->buf memory +15-Mar-2018*/
 		soc->buf = lan_freemem(soc->buf);
 		if (soc->buf != NULL) {
@@ -1769,8 +1725,7 @@ ErrorStatus write_socket(socket_p soc, uint8_t *buf, int32_t buflen)
 	eth_frame_t *frame;
 
 	/*  ETH_MAXFRAME (600 bytes) - UDP_PAYLOAD_START (42)  =  558 bytes for data */
-	const int32_t max_payload_len =
-		((int32_t)ETH_MAXFRAME - (int32_t)UDP_PAYLOAD_START);
+	const int32_t max_payload_len = ((int32_t)ETH_MAXFRAME - (int32_t)UDP_PAYLOAD_START);
 
 	if ((soc != NULL) && (soc->mode == SOC_MODE_WRITE) &&
 	    (buflen <= max_payload_len)) { /* socket is OK for writing */
@@ -1842,22 +1797,19 @@ eth_frame_t *udp_packet_callback(eth_frame_t *frame, uint16_t len)
 		if ((sockets[i].rem_ip_addr == ip->from_addr) &&
 		    (sockets[i].loc_ip_addr == ip->to_addr) &&
 		    /*		 (sockets[i].mode == SOC_MODE_READ) && */
-		    ((sockets[i].mode & SOC_MODE_READ) !=
-		     0U) && /* + 15-Mar-2018  */
+		    ((sockets[i].mode & SOC_MODE_READ) != 0U) && /* + 15-Mar-2018  */
 		    (sockets[i].proto == (uint8_t)IP_PROTOCOL_UDP) &&
 		    (sockets[i].loc_port == ntohs(udp->to_port))) {
 			/* receive from ANY port added 11-03-2018 */
-			sockets[i].rem_port = (sockets[i].rem_port == 0U) ?
-						      ntohs(udp->from_port) :
-						      sockets[i].rem_port;
+			sockets[i].rem_port = (sockets[i].rem_port == 0U) ? ntohs(udp->from_port) :
+									    sockets[i].rem_port;
 			if (sockets[i].rem_port == ntohs(udp->from_port)) {
 				/* proceed with payload  */
 				sockets[i].len = len;
 				if ((sockets[i].mode & SOC_NEW_DATA) != 0U) {
 					/* previous new data is not read, will be overwritten !*/
-					sockets[i].datalost =
-						SOC_DATA_LOST; /* + 15-Mar-2018  */
-					socdatalosts++; /* + 15-Mar-2018  */
+					sockets[i].datalost = SOC_DATA_LOST; /* + 15-Mar-2018  */
+					socdatalosts++;			     /* + 15-Mar-2018  */
 				}
 				sockets[i].mode |= SOC_NEW_DATA; /* set flag */
 				/* zero-copy implementation 13-Mar-2018 */

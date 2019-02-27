@@ -190,10 +190,10 @@ ErrorStatus Format(const Media_Desc_p media)
 		goto fExit;
 	}
 
-	uint32_t CRC = CRC32(DTA, clusterTableSize, 0x00U);
+	uint32_t fs_crc = CRC32(DTA, clusterTableSize, 0x00U);
 	size_t CRCOffset = offsetof(FAT_Begin_t, entry0);
 	CRCOffset += offsetof(DIR_Entry_t, FileCRC32);
-	retVal = media->writeFunc((uint8_t *)&CRC, CRCOffset, sizeof(uint32_t));
+	retVal = media->writeFunc((uint8_t *)&fs_crc, CRCOffset, sizeof(uint32_t));
 	if (retVal != SUCCESS) {
 		goto fExit;
 	}
@@ -251,7 +251,7 @@ FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode)
 		return retVal;
 	}
 
-	LOCK;
+//	LOCK;
 	size_t i = 0;
 	for (i = 0U; i < FS_CONCURRENT_FILES; i++) {
 		if (mutexes[i] != 0U) {
@@ -261,7 +261,7 @@ FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode)
 			break;
 		}
 	}
-	UNLOCK;
+//	UNLOCK;
 	if (i == FS_CONCURRENT_FILES) {
 		retVal = FR_TOO_MANY_OPEN_FILES;
 		goto fExit;
