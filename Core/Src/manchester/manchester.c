@@ -1,4 +1,4 @@
-/*
+﻿/*
 ** This file is part of the stm32f3disco project.
 ** Copyright 2018 <turchenkov@gmail.com>.
 **
@@ -17,8 +17,8 @@
 **/
 
 #include "FreeRTOS.h"
-#include "cmsis_os.h"
 #include "task.h"
+#include "cmsis_os.h"
 
 #include <limits.h>
 
@@ -36,145 +36,187 @@
 #include "stm32f1xx_hal_gpio.h"
 #include "stm32f1xx_hal_rcc.h"
 
+#else
+
+#error "MCU is not defined!"
+
 #endif
 
 #include "main.h"
 
-#include "manchester.h"
 #include "tim.h"
+#include "manchester.h"
+#include "bit_queue.h"
 
 /* local enums */
 typedef enum Edge { /* edge type */
-                    rising,
-                    falling
-} Edge_t;
+		    rising,
+		    falling,
+		    neutral
 
-#define PULSE_CORRECTION 20u;
+} Edge_t;
 
 /* structure holds timer configuration for the stage */
 typedef struct TimerCfg {
-  uint32_t CCMR1;
-  uint32_t CR1;
-  uint32_t CR2;
-  uint32_t SMCR;
-  uint32_t PSC;
-  uint32_t CCER;
-  uint32_t ARR;
-  HAL_TIM_StateTypeDef state;
-  uint8_t NeedMSPInit;
+	uint32_t CCMR1;
+	uint32_t CR1;
+	uint32_t CR2;
+	uint32_t SMCR;
+	uint32_t PSC;
+	uint32_t CCER;
+	uint32_t ARR;
+	HAL_TIM_StateTypeDef state;
+	uint8_t NeedMSPInit;
 } TimerCfg_t;
 
 /* static functions */
 
-ErrorStatus transmitBit(uint32_t timeoutMS, TIM_HandleTypeDef *htim,
-                        uint8_t bit);
-ErrorStatus transmitStartStopBits(uint32_t timeoutMS, TIM_HandleTypeDef *htim,
-                                  uint8_t val, size_t num);
+ErrorStatus transmitBit(uint32_t timeoutMS, uint8_t bit);
+ErrorStatus transmitStartStopBits(uint32_t timeoutMS, uint8_t val, size_t num);
 
-ErrorStatus receiveBit(uint32_t timeoutMS, uint8_t *val, uint8_t mask);
-ErrorStatus receiveStartStopBits(uint32_t timeoutMS, uint8_t val, size_t num);
 void configTimer(TIM_HandleTypeDef *htim, size_t stage);
-uint32_t capturePulse(TIM_HandleTypeDef *htim, uint32_t timeout, Edge_t edge);
 
-uint8_t decidePulseWidth(uint32_t measTime, MANCHESTER_Context_t *context);
-uint8_t decodeBit(uint8_t one, uint8_t two);
-uint8_t sampleAt(TIM_HandleTypeDef *htim, uint32_t timeoutMS, uint32_t tts);
-uint8_t sampleAndDecodeBit(TIM_HandleTypeDef *htim, uint32_t measTime);
+ErrorStatus processPulse(PulseData_t *const p,
+			 MANCHESTER_Context_t *const context,
+			 BitQueue_t *const qu);
 
-uint8_t swapBits(uint8_t val);
-void reverseBitString(uint8_t *data, size_t len);
-size_t sbfr(uint8_t *field, uint32_t flen, size_t ns);
+ErrorStatus processStartStopBits(size_t nBits,
+				 MANCHESTER_Context_t *const context,
+				 BitQueue_t *const qu);
+ErrorStatus processPayLoad(MANCHESTER_Context_t *const context,
+			   MANCHESTER_Data_t *data, BitQueue_t *const qu);
+
+ErrorStatus prepareRx(MANCHESTER_Context_t *const context);
+
+ErrorStatus receiveBits(MANCHESTER_Context_t *context, BitQueue_t *qu);
 
 /* access to the timer mutex */
 extern osMutexId ManchesterTimer01MutexHandle;
-// extern uint32_t measured1;
-extern TaskHandle_t myTask02_MANCHHandle;
+//extern uint32_t measured1;
+extern TaskHandle_t ManchTaskHandle;
 
-/* local variables */
-uint32_t captured1; // last err line
+PulseData_t pulses;
 
-#define LAST_ERR captured1 = __LINE__
+/* pointer to the high 16 bit counter value - incremented every UIE interrupt */
+uint16_t highCntValue;
+
+/* flaf for UIE interrupt handler */
+uint8_t RecvState;
 
 /* array of timer configurations used when receiving packet */
 static TimerCfg_t timerCfgData[] = {
-    {.CCMR1 = 0u,
-     .CR1 = 0u,
-     .CR2 = 0u,
-     .SMCR = 0u,
-     .PSC = 8, // 71u,
-     .CCER = 0u,
-     .ARR = UINT32_MAX,
-     .state = HAL_TIM_STATE_RESET,
-     .NeedMSPInit = 0}, // default
+	{ .CCMR1 = 0u,
+	  .CR1 = 0u,
+	  .CR2 = 0u,
+	  .SMCR = 0u,
+	  .PSC = 71u,
+	  .CCER = 0u,
+	  .ARR = UINT32_MAX,
+	  .state = HAL_TIM_STATE_RESET,
+	  .NeedMSPInit = 0 }, // default
 
-    /* wait for 1st rising edge */
-    {.CCMR1 = TIM_ICSELECTION_DIRECTTI | TIM_ICPSC_DIV1 | (12U << 4U),
-     .CR1 = TIM_CLOCKDIVISION_DIV4 | TIM_COUNTERMODE_UP |
-            TIM_AUTORELOAD_PRELOAD_DISABLE,
-     .CR2 = TIM_TRGO_RESET,
-     .SMCR = TIM_SLAVEMODE_EXTERNAL1 | TIM_TS_TI1FP1,
-     .PSC = 8, // 71u,
-     .CCER = TIM_INPUTCHANNELPOLARITY_RISING,
-     .ARR = 1u,
-     .state = HAL_TIM_STATE_READY,
-     .NeedMSPInit = 1},
+	/* wait for 1st rising edge */
+	{ .CCMR1 = TIM_ICSELECTION_DIRECTTI | TIM_ICPSC_DIV1 | (12U << 4U),
+	  .CR1 = TIM_CLOCKDIVISION_DIV4 | TIM_COUNTERMODE_UP |
+		 TIM_AUTORELOAD_PRELOAD_DISABLE,
+	  .CR2 = TIM_TRGO_RESET,
+	  .SMCR = TIM_SLAVEMODE_EXTERNAL1 | TIM_TS_TI1FP1,
+	  .PSC = 71u,
+	  .CCER = TIM_INPUTCHANNELPOLARITY_RISING,
+	  .ARR = 1u,
+	  .state = HAL_TIM_STATE_READY,
+	  .NeedMSPInit = 1 },
 
-    {.CCMR1 = TIM_ICSELECTION_DIRECTTI | TIM_ICPSC_DIV1 | (12U << 4U),
-     .CR1 = TIM_CLOCKDIVISION_DIV4 | TIM_COUNTERMODE_UP |
-            TIM_AUTORELOAD_PRELOAD_DISABLE,
-     .CR2 = TIM_TRGO_RESET,
-     .SMCR = 0u,
-     .PSC = 8, // 71u,
-     .CCER = TIM_INPUTCHANNELPOLARITY_FALLING | TIM_CCER_CC1E,
-     .ARR = 65535u,
-     .state = HAL_TIM_STATE_READY,
-     .NeedMSPInit = 0}, // measure first pulse
+	{ .CCMR1 = TIM_ICSELECTION_DIRECTTI | TIM_ICPSC_DIV1 | (12U << 4U),
+	  .CR1 = TIM_CLOCKDIVISION_DIV4 | TIM_COUNTERMODE_UP |
+		 TIM_AUTORELOAD_PRELOAD_DISABLE,
+	  .CR2 = TIM_TRGO_RESET,
+	  .SMCR = 0u,
+	  .PSC = 71u,
+	  .CCER = TIM_INPUTCHANNELPOLARITY_FALLING | TIM_CCER_CC1E,
+	  .ARR = 65535u,
+	  .state = HAL_TIM_STATE_READY,
+	  .NeedMSPInit = 0 }, // measure first pulse
 
-    {.CCMR1 = 0u,
-     .CR1 = TIM_CLOCKDIVISION_DIV1 | TIM_COUNTERMODE_DOWN |
-            TIM_AUTORELOAD_PRELOAD_ENABLE,
-     .CR2 = TIM_TRGO_RESET,
-     .SMCR = 0u,
-     .PSC = 8, // 71u,
-     .CCER = 0u,
-     .ARR = 65535u,
-     .state = HAL_TIM_STATE_READY,
-     .NeedMSPInit = 0}, // GPIO input pin samlping
+	{ .CCMR1 = 0u,
+	  .CR1 = TIM_CLOCKDIVISION_DIV1 | TIM_COUNTERMODE_DOWN |
+		 TIM_AUTORELOAD_PRELOAD_ENABLE,
+	  .CR2 = TIM_TRGO_RESET,
+	  .SMCR = 0u,
+	  .PSC = 71u,
+	  .CCER = 0u,
+	  .ARR = 65535u,
+	  .state = HAL_TIM_STATE_READY,
+	  .NeedMSPInit = 0 }, // GPIO input pin samlping
 
-    /* gated mode */
-    {.CCMR1 = TIM_ICSELECTION_DIRECTTI | TIM_ICPSC_DIV1 | (12U << 4U),
-     .CR1 = TIM_CLOCKDIVISION_DIV4 | TIM_COUNTERMODE_UP |
-            TIM_AUTORELOAD_PRELOAD_DISABLE,
-     .CR2 = TIM_TRGO_RESET,
-     .SMCR = TIM_SLAVEMODE_GATED | TIM_TS_TI1FP1,
-     .PSC = 8, // 71u,
-     .CCER = TIM_INPUTCHANNELPOLARITY_RISING | TIM_CCER_CC1E,
-     .ARR = 65535u,
-     .state = HAL_TIM_STATE_READY,
-     .NeedMSPInit = 1}, // measure first pulse
+	/* gated mode */
+	{ .CCMR1 = TIM_ICSELECTION_DIRECTTI | TIM_ICPSC_DIV1 | (12U << 4U),
+	  .CR1 = TIM_CLOCKDIVISION_DIV4 | TIM_COUNTERMODE_UP |
+		 TIM_AUTORELOAD_PRELOAD_DISABLE,
+	  .CR2 = TIM_TRGO_RESET,
+	  .SMCR = TIM_SLAVEMODE_GATED | TIM_TS_TI1FP1,
+	  .PSC = 71u,
+	  .CCER = TIM_INPUTCHANNELPOLARITY_RISING | TIM_CCER_CC1E,
+	  .ARR = 65535u,
+	  .state = HAL_TIM_STATE_READY,
+	  .NeedMSPInit = 1 }, // measure first pulse
 
-    /* for transmit */
-    {.CCMR1 = 0u,
-     .CR1 = TIM_CLOCKDIVISION_DIV1 | TIM_COUNTERMODE_DOWN |
-            TIM_AUTORELOAD_PRELOAD_ENABLE,
-     .CR2 = TIM_TRGO_RESET,
-     .SMCR = 0u,
-     .PSC = 8, // 71u,
-     .CCER = 0u,
-     .ARR = 65535u,
-     .state = HAL_TIM_STATE_READY,
-     .NeedMSPInit = 1}, // GPIO input pin samlping
+	/* for transmit */
+	{ .CCMR1 = 0u,
+	  .CR1 = TIM_CLOCKDIVISION_DIV1 | TIM_COUNTERMODE_DOWN |
+		 TIM_AUTORELOAD_PRELOAD_ENABLE,
+	  .CR2 = TIM_TRGO_RESET,
+	  .SMCR = 0u,
+	  .PSC = 71u,
+	  .CCER = 0u,
+	  .ARR = 65535u,
+	  .state = HAL_TIM_STATE_READY,
+	  .NeedMSPInit = 1 }, // GPIO input pin samlping
+
+	/* trigger mode */
+	{ .CCMR1 = TIM_ICSELECTION_DIRECTTI | TIM_ICPSC_DIV1 | (12U << 4U),
+	  .CR1 = TIM_CLOCKDIVISION_DIV4 | TIM_COUNTERMODE_UP |
+		 TIM_AUTORELOAD_PRELOAD_DISABLE,
+	  .CR2 = TIM_TRGO_RESET,
+	  .SMCR = TIM_SLAVEMODE_TRIGGER | TIM_TS_TI1FP1,
+	  .PSC = 71u,
+	  .CCER = TIM_INPUTCHANNELPOLARITY_RISING | TIM_CCER_CC1E,
+	  .ARR = 65535u,
+	  .state = HAL_TIM_STATE_READY,
+	  .NeedMSPInit = 1 }, // measure first pulse
+
+	/* for receiving using EXTI */
+	{ .CCMR1 = 0u,
+	  .CR1 = TIM_CLOCKDIVISION_DIV1 | TIM_COUNTERMODE_UP |
+		 TIM_AUTORELOAD_PRELOAD_ENABLE,
+	  .CR2 = TIM_TRGO_RESET,
+	  .SMCR = 0u,
+	  .PSC = 71u,
+	  .CCER = 0u,
+	  .ARR = 65535u,
+	  .state = HAL_TIM_STATE_READY,
+	  .NeedMSPInit = 0 }, // GPIO input pin samlping
 
 };
 
 /**
  * @brief MANCHESTER_DebugLEDToggle
  */
-void MANCHESTER_DebugLEDToggle(void) {
+void MANCHESTER_DebugLED8Toggle(void)
+{
 #ifdef MANCHESTER_DEBUG
-  static uint8_t captureLedState;
-  captureLedState = (captureLedState == 0u) ? 1u : 0u;
-  HAL_GPIO_TogglePin(BLUE_LED_GPIO_Port, BLUE_LED_Pin);
+	static uint8_t ledState;
+	ledState = (ledState == 0u) ? 1u : 0u;
+	HAL_GPIO_TogglePin(LD8_GPIO_Port, LD8_Pin);
+#endif
+}
+
+void MANCHESTER_DebugLED6Toggle(void)
+{
+#ifdef MANCHESTER_DEBUG
+	static uint8_t ledState;
+	ledState = (ledState == 0u) ? 1u : 0u;
+	HAL_GPIO_TogglePin(LD6_GPIO_Port, LD6_Pin);
 #endif
 }
 
@@ -186,8 +228,7 @@ void MANCHESTER_DebugLEDToggle(void) {
  * @brief MANCHESTER_InitContext initializes context
  * @param context pointer to context
  * @param htim
- * @param numStartBits at least 1 start bit required, numStartBits <=
- * MAX_NUM_START_BITS
+ * @param numStartBits at least 1 start bit required, numStartBits <= MAX_NUM_START_BITS
  * @param numStopBits <= MAX_NUM_STOP_BITS
  * @param bitRate
  * @param bitOrder
@@ -195,499 +236,527 @@ void MANCHESTER_DebugLEDToggle(void) {
  * @return
  */
 ErrorStatus MANCHESTER_InitContext(MANCHESTER_Context_t *context,
-                                   TIM_HandleTypeDef *htim, size_t numStartBits,
-                                   size_t numStopBits, size_t bitRate,
-                                   MANCHESTER_BitOrder_t bitOrder,
-                                   uint8_t startStopBit) {
-  ErrorStatus retVal = ERROR;
-  if ((context == NULL) || (htim == NULL) ||
-      (IS_TIM_INSTANCE(htim->Instance) == 0)) {
-    goto fExit;
-  }
-  context->htim = htim;
-  context->bitOrder = bitOrder;
-  context->bitRate = bitRate;
-  if ((numStartBits > MAX_NUM_START_BITS) || (numStartBits == 0u)) {
-    goto fExit;
-  }
-  context->numStartBits = numStartBits;
-  if (numStopBits > MAX_NUM_STOP_BITS) {
-    goto fExit;
-  }
-  context->numStopBits = numStopBits;
-  context->startStopBit = startStopBit;
+				   TIM_HandleTypeDef *htim, size_t numStartBits,
+				   size_t numStopBits, size_t bitRate,
+				   MANCHESTER_BitOrder_t bitOrder,
+				   uint8_t startStopBit)
+{
+	ErrorStatus retVal = ERROR;
+	if ((context == NULL) || (htim == NULL) ||
+	    (IS_TIM_INSTANCE(htim->Instance) == 0)) {
+		goto fExit;
+	}
+	context->htim = htim;
+	context->bitOrder = bitOrder;
+	context->bitRate = bitRate;
+	if ((numStartBits > MAX_NUM_START_BITS) || (numStartBits == 0u)) {
+		goto fExit;
+	}
+	context->numStartBits = numStartBits;
+	if (numStopBits > MAX_NUM_STOP_BITS) {
+		goto fExit;
+	}
+	context->numStopBits = numStopBits;
+	context->startStopBit = startStopBit;
 
-  /* parameters for time measurement */
-  uint32_t timerClkFreq = HAL_RCC_GetPCLK1Freq() * 2u;
-  uint32_t prescVal = htim->Instance->PSC & 0xFFFF;
-  timerClkFreq = timerClkFreq / (prescVal + 1u);
-  /* half-byte time value in timerClkFreq ticks */
-  context->halfBitTime = timerClkFreq / (bitRate * 2u);
-  uint32_t tol = (context->halfBitTime / HALF_BYTE_TOLERANCE);
-  context->halfBitMinTime = context->halfBitTime - tol;
-  context->halfBitMaxTime = context->halfBitTime + tol;
-  // TODO
-  /** external clock mode1, input TI1FP1, downcounting from preloaded 1 downto 0
-   *  If Fck_int = 72 MHz and internal clock div CKD = 4
-   *  F DTS = 18MHz
-   *  ICxF[3:0] = 15 ---> Fsampling = F DTS : 32 = 562500Hz; N = 8; Tfilter
-   * = 14.3uS ICxF[3:0] = 12 ---> Fsampling = F DTS : 16 = 1125000Hz; N = 8;
-   * Tfilter = 7.15uS
-   */
-  /* pulse detection timeout in ms */
-  context->pulseTimeout = (1000u / (bitRate * 2u)) + 2u;
-
-  context->filterTime = 7u; /* 7 us*/
-  retVal = SUCCESS;
+	/* parameters for time measurement */
+	uint32_t timerClkFreq = HAL_RCC_GetPCLK1Freq() * 2u;
+	uint32_t prescVal = htim->Instance->PSC & 0xFFFF;
+	timerClkFreq = timerClkFreq / (prescVal + 1u);
+	/* half-byte time value in timerClkFreq ticks */
+	context->halfBitTime = timerClkFreq / (bitRate * 2u);
+	uint32_t tol = (context->halfBitTime / HALF_BYTE_TOLERANCE);
+	context->halfBitMinTime = context->halfBitTime - tol;
+	context->halfBitMaxTime = context->halfBitTime + tol;
+	/* pulse detection timeout in ms */
+	context->pulseTimeout = (1000u / (bitRate * 2u)) + 2u;
+	context->filterTime = 7u; /* 7 us*/
+	retVal = SUCCESS;
 fExit:
-  return retVal;
+	return retVal;
 }
 
 /**
  ************** RECEIVING ROUTINES **************************
  */
+
+// using EXTI and timer
 /**
  * @brief MANCHESTER_Receive
  * @param data pointer to data context
  * @param context pointer to conmmunication context
  * @return SUCCESS or ERROR
  */
-ErrorStatus MANCHESTER_Receive(MANCHESTER_Data_t *data,
-                               MANCHESTER_Context_t *context) {
-  ErrorStatus retVal = ERROR;
-  STROBE_1;
-
-  /* storage of received half-bits */
-  //	uint8_t p0 = UINT8_MAX; // 1st half-bit of the first bit in the packet
-  uint8_t p1 = UINT8_MAX; // 2nd half-bit of the first bit in the packet
-  uint8_t p2 = UINT8_MAX; // 1st half-bit of the second bit in the packet
-  uint8_t p3 = UINT8_MAX; // 2nd half-bit of the second bit in the packet
-
-  /* FREERTOS mutex*/
-  BaseType_t mut = 0;
-
-  if ((data == NULL) || (context == NULL)) {
-    return ERROR;
-  }
-  if ((data->dataPtr == NULL) || (context->htim == NULL)) {
-    return ERROR;
-  }
-  TIM_HandleTypeDef *htim = context->htim;
-  /* Decide if rtos has already started */
-  if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
-    /* Take MUTEX */
-    mut = xSemaphoreTake(ManchesterTimer01MutexHandle, portMAX_DELAY);
-  }
-#define GATED_MODE
-
-#ifndef GATED_MODE
-  /* initialize the timer hardware for receiving 1st rising edge */
-  /* initialize timer as interrupt controller */
-  TimerConfig(context->htim, 1u);
-  retVal = SUCCESS;
-  /* Wait to be notified of an interrupt. */
-  const TickType_t xMaxBlockTime = pdMS_TO_TICKS(WAIT_FOR_START_MAX_MS);
-  BaseType_t xResult;
-  uint32_t ulNotifiedValue;
-  /* Go! */
-  htim->Instance->SR = 0u;
-  // we do not need to set CEN bit to have TRIG Interrupt
-  htim->Instance->DIER = TIM_DIER_TIE;
-
-  xResult = xTaskNotifyWait(pdFALSE,          /* Don't clear bits on entry. */
-                            ULONG_MAX,        /* Clear all bits on exit. */
-                            &ulNotifiedValue, /* Stores the notified value. */
-                            xMaxBlockTime);
-  htim->Instance->DIER &= ~TIM_DIER_TIE;
-  if (xResult != pdPASS) {
-    retVal = ERROR;
-    measured = 0xFFFF;
-    LAST_ERR;
-    goto fExit;
-  }
-
-  /* set up the timer for capturing falling/rising edge */
-  TimerConfig(context->htim, 2u);
-
-  measured = capturePulse(htim, pulseTimeout, falling);
+#ifdef MANCHESTER_DEBUG
+volatile static size_t bits_received;
+volatile static size_t mr_err;
+#define MR_ERR_LINE mr_err = __LINE__
 #else
+#define MR_ERR_LINE
+#endif
 
-  configTimer(context->htim, 4u);
-  STROBE_0;
-  retVal = SUCCESS;
-  BaseType_t xResult;
-  uint32_t ulNotifiedValue;
-  htim->Instance->CNT = 0u;
-  htim->Instance->EGR = TIM_EGR_UG;
-  htim->Instance->SR = 0u;
-  htim->Instance->DIER = TIM_DIER_TIE;
-  htim->Instance->CR1 |= 01u;
-  xResult = xTaskNotifyWait(pdFALSE,          /* Don't clear bits on entry. */
-                            ULONG_MAX,        /* Clear all bits on exit. */
-                            &ulNotifiedValue, /* Stores the notified value. */
-                            pdMS_TO_TICKS(10000));
+ErrorStatus MANCHESTER_Receive(MANCHESTER_Data_t *data,
+			       MANCHESTER_Context_t *context)
+{
+	pulses.low = 0x00u;
+	pulses.high = 0x00u;
+	pulses.hasLow1T = 0x00u;
+	ErrorStatus retVal = ERROR;
+	BitQueue_t qu = { 0x00U, 0x00U };
+	RecvState = 0x01U;
 
-  if (xResult != pdPASS) {
-    retVal = ERROR;
-    //		measured1 = 0xFFFF;
-    LAST_ERR;
-    goto fExit;
-  }
-  /* we need second event */
-  xResult = xTaskNotifyWait(pdFALSE,          /* Don't clear bits on entry. */
-                            ULONG_MAX,        /* Clear all bits on exit. */
-                            &ulNotifiedValue, /* Stores the notified value. */
-                            pdMS_TO_TICKS(context->pulseTimeout));
+#ifdef MANCHESTER_DEBUG
+	bits_received = 0x00u;
+	mr_err = 0x00u;
+#endif
+	/* FREERTOS mutex*/
+	BaseType_t mut = 0;
+	STROBE_0;
+	if ((data == NULL) || (context == NULL)) {
+		return ERROR;
+	}
+	if ((data->dataPtr == NULL) || (context->htim == NULL)) {
+		return ERROR;
+	}
+	/* Decide if rtos has already started */
+	if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+		/* Take MUTEX */
+		mut = xSemaphoreTake(ManchesterTimer01MutexHandle,
+				     portMAX_DELAY);
+	}
 
-  if (xResult != pdPASS) {
-    retVal = ERROR;
-    //		measured1 = 0xFFFF;
-    LAST_ERR;
-    goto fExit;
-  }
-  htim->Instance->DIER &= ~TIM_DIER_TIE;
-  htim->Instance->CR1 &= ~01u;
-  uint32_t measuredPulse = htim->Instance->CNT;
-//	measured1 = measuredPulse;
-#endif // GATED_MODE
-  uint8_t pulseVal = decidePulseWidth(measuredPulse, context);
-  if ((pulseVal != 1u) && (pulseVal != 2u)) {
-    retVal = ERROR; // bad pulse
-    LAST_ERR;
-    goto fExit;
-  }
+	retVal = prepareRx(context);
+	if (retVal != SUCCESS) {
+		MR_ERR_LINE;
+		goto fExit;
+	}
 
-  /* set up the timer for sampling */
-  configTimer(context->htim, 3u);
-  uint8_t bit2; // 2nd bit of the packet
-  if (context->startStopBit == 1u) {
-    if (pulseVal == 1u) {
-      p1 = sampleAt(htim, context->pulseTimeout,
-                    (measuredPulse / 2u) - 104u - 56u);
-      if (p1 != 0) {    // wrong start bit = 11 is illegal
-        retVal = ERROR; // bad pulse
-        LAST_ERR;
-        goto fExit;
-      }
-      p2 = sampleAt(htim, context->pulseTimeout, measuredPulse - 64u - 24u);
-      p3 = sampleAt(htim, context->pulseTimeout, measuredPulse - 64u - 24u);
-    } else {
-      retVal = ERROR; // bad pulse
-      LAST_ERR;
-      goto fExit;
-    }
-  }
-  if (context->startStopBit == 0u) {
-    p1 = 1;
-    if (pulseVal == 1u) {
-      p2 = sampleAt(htim, context->pulseTimeout, (measuredPulse / 2u));
-      p3 = sampleAt(htim, context->pulseTimeout, measuredPulse);
-    }
-    if (pulseVal == 2u) {
-      p2 = 1u;
-      p3 = sampleAt(htim, context->pulseTimeout, measuredPulse / -6u);
-    }
-  }
-  /* set timer sampling interval = measured (i.e. actual half-bit time) */
-  htim->Instance->ARR = measuredPulse;
-  /*enable timer and wait for flag */
-  htim->Instance->SR = 0u;
-  htim->Instance->CR1 = htim->Instance->CR1 | TIM_CR1_CEN;
-  htim->Instance->DIER = htim->Instance->DIER | TIM_DIER_UIE;
+	retVal = processStartStopBits(context->numStartBits, context, &qu);
+	if (retVal != SUCCESS) {
+		MR_ERR_LINE;
+		goto fExit;
+	}
 
-  /* here we have two first bits received*/
-  bit2 = decodeBit(p2, p3);
-  uint8_t needInject = 1u; // bit2 - first bit of the payload!
-  if (context->numStartBits > 1u) {
-    needInject = 0u;
-    if (context->startStopBit != bit2) {
-      retVal = ERROR;
-      LAST_ERR;
-      goto fExit;
-    }
-    uint32_t startBitsLeft = context->numStartBits - 2u;
-    retVal = receiveStartStopBits(context->pulseTimeout, context->startStopBit,
-                                  startBitsLeft);
-    if (retVal != SUCCESS) {
-      LAST_ERR;
-      goto fExit;
-    }
-  }
-  /* data bits go here */
+	retVal = processPayLoad(context, data, &qu);
+	if (retVal != SUCCESS) {
+		MR_ERR_LINE;
+		goto fExit;
+	}
 
-  size_t fullBytes;
-  fullBytes = (data->numBits / CHAR_BIT);
-  size_t bitsInTheLastByte;
-  bitsInTheLastByte = (data->numBits % CHAR_BIT);
-  size_t skipBits; /* number of highest bits of the last byte to be skipped */
-  skipBits = CHAR_BIT - bitsInTheLastByte;
+	retVal = processStartStopBits(context->numStopBits, context, &qu);
+	if (retVal != SUCCESS) {
+		MR_ERR_LINE;
+		goto fExit;
+	}
+	retVal = SUCCESS;
 
-  size_t i = 0u;
-  uint8_t mask;
-  while (i < fullBytes) {
-    data->dataPtr[i] = 0u;
-    if (needInject == 1u) {
-      if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
-        mask = 0x02u;
-        needInject = 0u;
-        data->dataPtr[0u] = bit2;
-      } else {
-        mask = 0x40u;
-        needInject = 0u;
-        data->dataPtr[0u] = (uint8_t)(bit2 << 7u);
-      }
-    } else {
-      if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
-        mask = 0x01u;
-      } else {
-        mask = 0x80u;
-      }
-    }
-    do {
-      retVal = receiveBit(context->pulseTimeout, &(data->dataPtr[i]), mask);
-      if (retVal != SUCCESS) {
-        LAST_ERR;
-        goto fExit;
-      }
-      if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
-        mask = (uint8_t)(mask << 1u);
-      } else {
-        mask = (uint8_t)(mask >> 1u);
-      }
-
-    } while (mask != 0x00u);
-    i++;
-  }
-  if (bitsInTheLastByte != 0u) {
-    data->dataPtr[fullBytes] = 0x00u;
-    if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
-      mask = 0x01u;
-    } else {
-      mask = (0x80u >> skipBits);
-    }
-    while (bitsInTheLastByte > 0u) {
-      retVal =
-          receiveBit(context->pulseTimeout, &(data->dataPtr[fullBytes]), mask);
-      if (retVal != SUCCESS) {
-        goto fExit;
-      }
-      if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
-        mask = (uint8_t)(mask << 1);
-      } else {
-        mask = (uint8_t)(mask >> 1);
-      }
-      bitsInTheLastByte--;
-    }
-  }
-  /* stop bits receiving */
-  retVal = receiveStartStopBits(context->pulseTimeout, context->startStopBit,
-                                context->numStopBits);
-  if (retVal != SUCCESS) {
-    goto fExit;
-  }
 fExit:
-  htim->Instance->DIER = htim->Instance->DIER & ~(TIM_DIER_UIE);
-  configTimer(context->htim, 0u);
-  /* Give MUTEX */
-  if (mut != 0) {
-    /* Decide if rtos has already started */
-    if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
-      mut = xSemaphoreGive(ManchesterTimer01MutexHandle);
-    }
-    (void)mut;
-  }
-  if (retVal == SUCCESS) {
-    STROBE_1;
-    STROBE_1;
-    STROBE_0;
-    STROBE_0;
-    STROBE_1;
-    STROBE_1;
-    STROBE_0;
-    STROBE_0;
-  }
-  return retVal;
+	HAL_NVIC_DisableIRQ(
+		EXTI15_10_IRQn); // diasble GPIO_EXTI12 interrupt pin
+	configTimer(context->htim, 0x00u);
+	/* Give MUTEX */
+	if (mut != 0) {
+		/* Decide if rtos has already started */
+		if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+			mut = xSemaphoreGive(ManchesterTimer01MutexHandle);
+		}
+	}
+	RecvState = 0x00U;
+	return retVal;
 }
 
+/*
+	set up timer and nvic
+	enable irq
+	test Rx line for space condition
+
+	set timeout to WAIT_FOR_START_MAX_MS
+	wait for 1st rising edge
+
+	1st rising edge:
+		check Rx line for "1"
+		save time t0
+		set timeout to pulseTimeout
+		return
+
+	start bits receiving....
+
+		wait for Interrupt
+		if timeout -> error
+		check Rx line for "0"
+		if not "0" -> error
+		save time t1
+		pulses.high = t1 - t0
+		wait for interrupt
+		if timepout ->
+			pulses.low = halfbit time
+			exit
+		else
+		   check Rx line for "1"
+			if not "1" - -> error exit
+		   save time t2
+		   pulses.low = t2 - t1
+		   process pulses
+		   if not error
+			t0 = t2
+		return
+
+*/
+
 /**
- * @brief sampleAt
- * @param htim
- * @param measured
+ * @brief prepareRx
+ * @param context
  * @return
  */
-uint8_t sampleAt(TIM_HandleTypeDef *htim, uint32_t timeoutMS, uint32_t tts) {
-  BaseType_t xResult;
-  uint32_t ulNotifiedValue;
-  uint8_t sample;
+#ifdef MANCHESTER_DEBUG
+volatile static size_t pr_err;
+#define PR_ERR_LINE pr_err = __LINE__
+#else
+#define PR_ERR_LINE
+#endif
 
-  htim->Instance->ARR = tts;
-  htim->Instance->EGR = TIM_EGR_UG;
-  const TickType_t xMaxBlockTime = pdMS_TO_TICKS(timeoutMS);
-  /*enable timer and wait for flag */
-  htim->Instance->SR = 0u;
-  htim->Instance->CR1 = htim->Instance->CR1 | TIM_CR1_CEN;
-  htim->Instance->DIER = htim->Instance->DIER | TIM_DIER_UIE;
-  /* Wait to be notified of an interrupt. */
-  xResult = xTaskNotifyWait(pdFALSE,          /* Don't clear bits on entry. */
-                            ULONG_MAX,        /* Clear all bits on exit. */
-                            &ulNotifiedValue, /* Stores the notified value. */
-                            xMaxBlockTime);
-  //	STROBE_1;
-  if (xResult != pdPASS) {
-    sample = UINT8_MAX;
-  } else {
-    //		STROBE_1;
-    sample = (uint8_t)(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0));
-    //		STROBE_0;
-  }
-  htim->Instance->DIER = htim->Instance->DIER & ~(TIM_DIER_UIE);
-  htim->Instance->CR1 = htim->Instance->CR1 & ~(TIM_CR1_CEN);
-  return sample;
+ErrorStatus prepareRx(MANCHESTER_Context_t *const context)
+{
+#ifdef MANCHESTER_DEBUG
+	pr_err = 0x00U;
+#endif
+
+	ErrorStatus retval = ERROR;
+	context->t0 = 0x00U;
+	highCntValue = 0x00u;
+	configTimer(context->htim, 0x07u);
+	context->htim->Instance->CNT = 0x00u;
+	context->htim->Instance->EGR = TIM_EGR_UG;
+	context->htim->Instance->SR = 0x00u;
+	context->htim->Instance->DIER =
+		context->htim->Instance->DIER | TIM_DIER_UIE;
+	context->htim->Instance->CR1 |= 0x01u;
+
+	BaseType_t xResult;
+	uint32_t ulNotifiedValue;
+	if (HAL_GPIO_ReadPin(MANCHESTER_RX_GPIO_Port, MANCHESTER_RX_Pin) !=
+	    GPIO_PIN_RESET) {
+		PR_ERR_LINE;
+		goto fExit;
+	}
+
+	__HAL_GPIO_EXTI_CLEAR_IT(
+		MANCHESTER_RX_Pin); //	enable GPIO_EXTI12 interrupt pin
+	HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
+	/* wait for 1st rising edge */
+	xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue,
+				  pdMS_TO_TICKS(WAIT_FOR_START_MAX_MS));
+	if (xResult != pdPASS) {
+		PR_ERR_LINE;
+		goto fExit;
+	}
+	if (HAL_GPIO_ReadPin(MANCHESTER_RX_GPIO_Port, MANCHESTER_RX_Pin) !=
+	    GPIO_PIN_SET) {
+		PR_ERR_LINE;
+		goto fExit;
+	}
+	context->t0 =
+		context->htim->Instance->CNT + (uint32_t)(highCntValue << 16U);
+fExit:
+	retval = SUCCESS;
+	return retval;
 }
 
 /**
- * @brief receiveBit receives a single bit
- * @param htim
- * @param val
- * @param mask
+ * @brief receiveBits
+ * @param context
+ * @param qu
+ * @return
+ */
+#ifdef MANCHESTER_DEBUG
+volatile static uint32_t rb_err;
+#define RB_ERR_LINE rb_err = __LINE__
+#else
+#define RB_ERR_LINE
+#endif
+
+ErrorStatus receiveBits(MANCHESTER_Context_t *context, BitQueue_t *qu)
+{
+#ifdef MANCHESTER_DEBUG
+	rb_err = 0x00u;
+#endif
+	ErrorStatus retVal = ERROR;
+	BaseType_t xResult;
+	uint32_t ulNotifiedValue;
+	TIM_HandleTypeDef *htim = context->htim;
+
+	TickType_t timeOut = pdMS_TO_TICKS(context->pulseTimeout);
+	if (HAL_GPIO_ReadPin(MANCHESTER_RX_GPIO_Port, MANCHESTER_RX_Pin) !=
+	    GPIO_PIN_SET) {
+		RB_ERR_LINE;
+		goto fExit;
+	}
+	xResult =
+		xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, timeOut);
+	if (xResult != pdPASS) {
+		RB_ERR_LINE;
+		goto fExit;
+	}
+	if (HAL_GPIO_ReadPin(MANCHESTER_RX_GPIO_Port, MANCHESTER_RX_Pin) !=
+	    GPIO_PIN_RESET) {
+		RB_ERR_LINE;
+		goto fExit;
+	}
+	uint32_t t1 = htim->Instance->CNT + (uint32_t)(highCntValue << 16U);
+	pulses.high = t1 - context->t0;
+	xResult =
+		xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, timeOut);
+	if (xResult != pdPASS) {
+		if (HAL_GPIO_ReadPin(MANCHESTER_RX_GPIO_Port,
+				     MANCHESTER_RX_Pin) == GPIO_PIN_RESET) {
+			pulses.low = context->halfBitTime;
+			retVal = processPulse(&pulses, context, qu);
+			if (retVal != SUCCESS) {
+				RB_ERR_LINE;
+			}
+			goto fExit;
+		} else {
+			RB_ERR_LINE;
+			goto fExit;
+		}
+	} else {
+		if (HAL_GPIO_ReadPin(MANCHESTER_RX_GPIO_Port,
+				     MANCHESTER_RX_Pin) != GPIO_PIN_SET) {
+			RB_ERR_LINE;
+			goto fExit;
+		}
+		uint32_t t2 =
+			htim->Instance->CNT + (uint32_t)(highCntValue << 16U);
+		pulses.low = t2 - t1;
+		context->t0 = t2;
+		retVal = processPulse(&pulses, context, qu);
+		if (retVal != SUCCESS) {
+			RB_ERR_LINE;
+		}
+	}
+fExit:
+	return retVal;
+}
+
+/**
+ * @brief processPulse
+ * @param p
+ * @param context
+ * @param qu
  * @return SUCCESS or ERROR
  */
-ErrorStatus receiveBit(uint32_t timeoutMS, uint8_t *val, uint8_t mask) {
-  ErrorStatus retVal = SUCCESS;
+#ifdef MANCHESTER_DEBUG
+volatile static uint32_t pp_err;
+#define PP_ERR_LINE pp_err = __LINE__
+#else
+#define PP_ERR_LINE
+#endif
 
-  const TickType_t xMaxBlockTime = pdMS_TO_TICKS(timeoutMS);
-  BaseType_t xResult;
-  uint32_t ulNotifiedValue;
-  uint8_t p0;
-  uint8_t p1;
+ErrorStatus processPulse(PulseData_t *const p,
+			 MANCHESTER_Context_t *const context,
+			 BitQueue_t *const qu)
+{
+#ifdef MANCHESTER_DEBUG
+	pp_err = 0x00u;
+#endif
+	uint8_t retVal = ERROR;
+	uint8_t activeBits;
+	activeBits = (p->hasLow1T == 0x01U) ? 0x01U : 0x00U;
+	uint8_t tmp = 0x00U;
+	if ((p->high > context->halfBitMinTime) &&
+	    (p->high < context->halfBitMaxTime)) {
+		tmp = (uint8_t)(0x01U << activeBits);
+		activeBits++;
+	} else if ((p->high > 2u * context->halfBitMinTime) &&
+		   (p->high < 2u * context->halfBitMaxTime)) {
+		tmp = (uint8_t)(0x03U << activeBits);
+		activeBits++;
+		activeBits++;
+	} else {
+		PP_ERR_LINE;
+		goto fExit;
+	}
+	if ((p->low > context->halfBitMinTime) &&
+	    (p->low < context->halfBitMaxTime)) {
+		activeBits++;
+	} else if ((p->low > 2u * context->halfBitMinTime) &&
+		   (p->low < 2u * context->halfBitMaxTime)) {
+		activeBits++;
+		activeBits++;
+	} else {
+		PP_ERR_LINE;
+		goto fExit;
+	}
 
-  /* Wait to be notified of an interrupt. */
-  xResult = xTaskNotifyWait(pdFALSE,          /* Don't clear bits on entry. */
-                            ULONG_MAX,        /* Clear all bits on exit. */
-                            &ulNotifiedValue, /* Stores the notified value. */
-                            xMaxBlockTime);
-  if (xResult != pdPASS) {
-    retVal = ERROR;
-    goto fExit;
-  }
-  /* read GPIO PIN */
-  p0 = (uint8_t)(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0));
-  /* Wait to be notified of an interrupt. */
-  xResult = xTaskNotifyWait(pdFALSE,          /* Don't clear bits on entry. */
-                            ULONG_MAX,        /* Clear all bits on exit. */
-                            &ulNotifiedValue, /* Stores the notified value. */
-                            xMaxBlockTime);
-  if (xResult != pdPASS) {
-    retVal = ERROR;
-    goto fExit;
-  }
-  /* read GPIO PIN */
-  p1 = (uint8_t)(HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0));
-  uint8_t bit = decodeBit(p0, p1);
-  if (bit == UINT8_MAX) {
-    retVal = ERROR;
-    goto fExit;
-  }
-  if (bit == 1u) {
-    *val |= mask;
-  }
+	while (activeBits > 0x01U) {
+		if ((tmp & 0x03U) == 0x01U) {
+			// bit = 1
+			if (putBitInQueue(0x01U, qu) != bqOk) {
+				for (;;) {
+				};
+			}
+#ifdef MANCHESTER_DEBUG
+			bits_received++;
+#endif
+		} else if ((tmp & 0x03U) == 0x02U) {
+			// bit = 0
+			if (putBitInQueue(0x00U, qu) != bqOk) {
+				for (;;) {
+				};
+			}
+#ifdef MANCHESTER_DEBUG
+			bits_received++;
+#endif
+		} else {
+			PP_ERR_LINE;
+			goto fExit;
+		}
+		activeBits--;
+		activeBits--;
+		tmp = (tmp >> 0x02U);
+	}
+	p->hasLow1T = (activeBits == 0x01U) ? 0x01U : 0x00U;
+	retVal = SUCCESS;
 fExit:
-  return retVal;
+	return retVal;
 }
 
 /**
- * @brief receiveStartStopBits
- * @param htim
- * @param val
- * @param num
+ * @brief processStartStopBits
+ * @param nBits
+ * @param context
+ * @param qu
  * @return
  */
-ErrorStatus receiveStartStopBits(uint32_t timeoutMS, uint8_t val, size_t num) {
-  ErrorStatus retVal;
-  retVal = SUCCESS;
+#ifdef MANCHESTER_DEBUG
+volatile static uint32_t psb_err;
+#define PSB_ERR_LINE psb_err = __LINE__
+#else
+#define PSB_ERR_LINE
+#endif
 
-  while (num > 0u) {
-    uint8_t tmp = 0u;
-    retVal = receiveBit(timeoutMS, &tmp, 01u);
-    if (retVal != SUCCESS) {
-      LAST_ERR;
-      goto fExit;
-    }
-    if (val != tmp) {
-      retVal = ERROR;
-      LAST_ERR;
-      goto fExit;
-    }
-    num--;
-  }
-fExit:
-  return retVal;
+ErrorStatus processStartStopBits(size_t nBits,
+				 MANCHESTER_Context_t *const context,
+				 BitQueue_t *const qu)
+{
+#ifdef MANCHESTER_DEBUG
+	psb_err = 0x00U;
+#endif
+	ErrorStatus retVal = ERROR;
+	uint8_t tmpBit;
+	while (nBits > 0x00U) {
+		if (dequeueBit(&tmpBit, qu) == bqEmpty) {
+			retVal = receiveBits(context, qu);
+			if (retVal != SUCCESS) {
+				PSB_ERR_LINE;
+				break;
+			} else {
+				dequeueBit(&tmpBit, qu);
+			}
+		}
+		if (tmpBit != context->startStopBit) {
+			PSB_ERR_LINE;
+			retVal = ERROR;
+			break;
+		} else {
+			retVal = SUCCESS;
+		}
+		nBits--;
+	}
+	return retVal;
 }
 
 /**
- * @brief decodeBit decodes a bit
- * @param one
- * @param two
- * @return 0 or 1 or UINT8_MAX in case of error
- */
-uint8_t decodeBit(uint8_t one, uint8_t two) {
-  if (one == two) {
-    return UINT8_MAX;
-  }
-  return one;
-}
-
-/**
- * @brief capturePulse captures pulse width
- * @param htim timer handle
- * @param timeout value in ms
- * @param edge rising or falling
- * @return UINT32_MAX in case of error, value in us otherwize
- * @note timer is already configured
- */
-uint32_t capturePulse(TIM_HandleTypeDef *htim, uint32_t timeout, Edge_t edge) {
-  uint32_t retVal = UINT32_MAX;
-  if (edge == rising) {
-    htim->Instance->CCER |= TIM_INPUTCHANNELPOLARITY_RISING;
-  } else {
-    htim->Instance->CCER |= TIM_INPUTCHANNELPOLARITY_FALLING;
-  }
-
-  htim->Instance->CCER |= TIM_CCER_CC1E;
-  htim->Instance->SR = 0u;
-  htim->Instance->DIER = TIM_DIER_CC1IE;
-  htim->Instance->CR1 = TIM_CR1_CEN;
-  TickType_t xMaxBlockTime = pdMS_TO_TICKS(timeout);
-  BaseType_t xResult = xTaskNotifyWait(pdFALSE, /* Don't clear bits on entry. */
-                                       ULONG_MAX, /* Clear all bits on exit. */
-                                       &retVal, /* Stores the notified value. */
-                                       xMaxBlockTime);
-  if (xResult != pdPASS) {
-    retVal = 0xFFFFFFFEU;
-  }
-  htim->Instance->DIER &= ~TIM_DIER_CC1IE;
-  htim->Instance->CCER &= ~TIM_CCER_CC1E;
-  htim->Instance->CR1 &= ~TIM_CR1_CEN;
-  return retVal + PULSE_CORRECTION;
-}
-
-/**
- * @brief decideBit decides is measured duration a half-bit, or bit, or bad
- * value
- * @param measured
+ * @brief processPayLoad
  * @param context
- * @return UINT8_MAX in case of error, 1 if half-bit, 2 if bit
+ * @param data
+ * @param qu
+ * @return
  */
-uint8_t decidePulseWidth(uint32_t measured, MANCHESTER_Context_t *context) {
-  uint8_t retVal = UINT8_MAX;
-  if ((measured >= context->halfBitMinTime) &&
-      (measured <= context->halfBitMaxTime)) {
-    retVal = 1u;
-  } else if ((measured >= (2u * context->halfBitMinTime)) &&
-             (measured <= (2u * context->halfBitMaxTime))) {
-    retVal = 2u;
-  }
-  return retVal;
+
+#ifdef MANCHESTER_DEBUG
+volatile static uint32_t ppl_err;
+#define PPL_ERR_LINE ppl_err = __LINE__
+#else
+#define PPL_ERR_LINE
+#endif
+
+ErrorStatus processPayLoad(MANCHESTER_Context_t *const context,
+			   MANCHESTER_Data_t *data, BitQueue_t *const qu)
+{
+#ifdef MANCHESTER_DEBUG
+	ppl_err = 0x00U;
+#endif
+	ErrorStatus retVal;
+	retVal = ERROR;
+
+	size_t fullBytes;
+	fullBytes = (data->numBits / CHAR_BIT);
+	size_t bitsInTheLastByte;
+	bitsInTheLastByte = (data->numBits % CHAR_BIT);
+	size_t skipBits; /* number of highest bits of the last byte to be skipped */
+	skipBits = CHAR_BIT - bitsInTheLastByte;
+
+	size_t i = 0u;
+	uint8_t mask;
+	while (i < fullBytes) {
+		data->dataPtr[i] = 0u;
+		mask = (context->bitOrder == MANCHESTER_BitOrderLSBFirst) ?
+			       0x01U :
+			       0x80U;
+
+		do {
+			uint8_t tmpBit;
+			while (dequeueBit(&tmpBit, qu) == bqEmpty) {
+				retVal = receiveBits(context, qu);
+				if (retVal != SUCCESS) {
+					PPL_ERR_LINE;
+					goto fExit;
+				}
+			}
+
+			data->dataPtr[i] = (tmpBit == 0x00U) ?
+						   data->dataPtr[i] :
+						   (data->dataPtr[i] | mask);
+
+			if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
+				mask = (uint8_t)(mask << 1u);
+			} else {
+				mask = (uint8_t)(mask >> 1u);
+			}
+		} while (mask != 0x00u);
+		i++;
+	}
+	if (bitsInTheLastByte != 0u) {
+		data->dataPtr[fullBytes] = 0x00u;
+		mask = (context->bitOrder == MANCHESTER_BitOrderLSBFirst) ?
+			       0x01U :
+			       (0x80u >> skipBits);
+		while (bitsInTheLastByte > 0u) {
+			uint8_t tmpBit;
+			while (dequeueBit(&tmpBit, qu) == bqEmpty) {
+				retVal = receiveBits(context, qu);
+				if (retVal != SUCCESS) {
+					PPL_ERR_LINE;
+					goto fExit;
+				}
+			}
+
+			data->dataPtr[i] = (tmpBit == 0x00U) ?
+						   data->dataPtr[i] :
+						   (data->dataPtr[i] | mask);
+
+			if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
+				mask = (uint8_t)(mask << 1);
+			} else {
+				mask = (uint8_t)(mask >> 1);
+			}
+			bitsInTheLastByte--;
+		}
+	}
+fExit:
+	return retVal;
 }
 
 /**
@@ -695,110 +764,54 @@ uint8_t decidePulseWidth(uint32_t measured, MANCHESTER_Context_t *context) {
  * @param htim
  * @param stage index of the config. params.table
  */
-void configTimer(TIM_HandleTypeDef *htim, size_t stage) {
-  if (timerCfgData[stage].state == HAL_TIM_STATE_RESET) {
-    // HAL_TIM_Base_MspDeInit(htim);
-  } else {
-    if (timerCfgData[stage].NeedMSPInit == 1u) {
-      HAL_TIM_Base_MspInit(htim);
-    }
-  }
-  /* copied from STM32 Cube code */
-  uint32_t tmpsmcr;
-  tmpsmcr = htim->Instance->SMCR;
-  tmpsmcr &= ~(TIM_SMCR_SMS | TIM_SMCR_TS);
-  tmpsmcr &= ~(TIM_SMCR_ETF | TIM_SMCR_ETPS | TIM_SMCR_ECE | TIM_SMCR_ETP);
-  htim->Instance->SMCR = tmpsmcr;
-  /* end of copied... from STM32 Cube code */
+void configTimer(TIM_HandleTypeDef *htim, size_t stage)
+{
+	if (timerCfgData[stage].state == HAL_TIM_STATE_RESET) {
+		//		HAL_TIM_Base_MspDeInit(htim);
+	} else {
+		if (timerCfgData[stage].NeedMSPInit == 1u) {
+			HAL_TIM_Base_MspInit(htim);
+		}
+	}
+	/* copied from STM32 Cube code */
+	uint32_t tmpsmcr;
+	tmpsmcr = htim->Instance->SMCR;
+	tmpsmcr &= ~(TIM_SMCR_SMS | TIM_SMCR_TS);
+	tmpsmcr &=
+		~(TIM_SMCR_ETF | TIM_SMCR_ETPS | TIM_SMCR_ECE | TIM_SMCR_ETP);
+	htim->Instance->SMCR = tmpsmcr;
+	/* end of copied... from STM32 Cube code */
 
-  htim->Instance->CR1 = timerCfgData[stage].CR1;
-  htim->Instance->ARR = timerCfgData[stage].ARR;
-  htim->Instance->PSC = timerCfgData[stage].PSC;
-  htim->Instance->EGR = TIM_EGR_UG;
+	htim->Instance->CR1 = timerCfgData[stage].CR1;
+	htim->Instance->ARR = timerCfgData[stage].ARR;
+	htim->Instance->PSC = timerCfgData[stage].PSC;
+	htim->Instance->EGR = TIM_EGR_UG;
 
-  htim->Instance->CR2 = timerCfgData[stage].CR2;
-  htim->Instance->CCMR1 = timerCfgData[stage].CCMR1;
-  htim->Instance->SMCR = timerCfgData[stage].SMCR;
-  htim->Instance->CCER = timerCfgData[stage].CCER;
-  htim->Instance->DIER = 0u;
-  htim->State = timerCfgData[stage].state;
+	htim->Instance->CR2 = timerCfgData[stage].CR2;
+	htim->Instance->CCMR1 = timerCfgData[stage].CCMR1;
+	htim->Instance->SMCR = timerCfgData[stage].SMCR;
+	htim->Instance->CCER = timerCfgData[stage].CCER;
+	htim->Instance->DIER = 0u;
+	htim->State = timerCfgData[stage].state;
 }
 
 /**
- * @brief sbfr shifts bit field "* field" of "flen" bytes right by "ns" times
- * @param field
- * @param flen length in bytes
- * @param ns
- * @return the actual nr of shifts
+ * @brief HAL_GPIO_EXTI_Callback
+ * @param GPIO_Pin
  */
-size_t sbfr(uint8_t *field, uint32_t flen, size_t ns) {
-  ns = (ns > flen * CHAR_BIT) ? flen * CHAR_BIT : ns; // limit number of shifts
-  size_t sns;
-  sns = ns;
-  size_t i;
-  uint8_t carry_flag;
-  uint8_t next;
-  while (ns > 0) {
-    carry_flag = 0;
-    next = 0;
-    for (i = flen; i > 0; i--) {
-      next = (field[i - 1] & 0x01) ? 0x80 : 0x00;
-      field[i - 1] = (uint8_t)(field[i - 1] >> 1) | carry_flag;
-      carry_flag = next;
-    }
-    ns--;
-  };
-  return sns;
-}
-
-/**
- * @brief swapBits swaps order of bits in byte
- * @param val input byte
- * @return swapped byte
- */
-uint8_t swapBits(uint8_t val) {
-  uint8_t retVal = 0U;
-  uint8_t mask = 0x80U;
-  uint8_t tmp = 0x01U;
-  for (size_t i = 0; i < CHAR_BIT; i++) {
-    if ((val & mask) == mask) {
-      retVal = retVal | tmp;
-    }
-    mask = mask >> 1u;
-    tmp = (uint8_t)(tmp << 1u);
-  }
-  return retVal;
-}
-
-/**
- * @brief reverseBitString reverses a bit string
- * @param data pointer to first byte
- * @param len length of the string in bits
- */
-void reverseBitString(uint8_t *data, size_t len) {
-  size_t fullBytes = len / CHAR_BIT;
-  size_t bitsInTheLastByte = len % CHAR_BIT;
-  size_t totalBytes = (bitsInTheLastByte > 0u) ? fullBytes + 1u : fullBytes;
-  size_t skipBits; /* number of highest bits of the last byte to be skipped */
-  skipBits = (bitsInTheLastByte > 0u) ? (CHAR_BIT - bitsInTheLastByte) : 0u;
-
-  size_t steps = totalBytes / 2u;
-  size_t i = 0u;
-  size_t j = totalBytes;
-  while (i < steps) {
-    uint8_t tmp = data[i];
-    data[i] = swapBits(data[j - 1u]);
-    data[j - 1u] = swapBits(tmp);
-    i++;
-    j--;
-  }
-  if ((totalBytes % 2u) == 1u) {
-    data[i] = swapBits(data[i]);
-  }
-  // shift bit string rigth if the last source byte has < CHAR_BIT bits
-  if (skipBits > 0u) {
-    sbfr(data, totalBytes, skipBits);
-  }
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+	if (GPIO_Pin == MANCHESTER_RX_Pin) {
+		STROBE_1;
+		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+		uint32_t notification = 0x00u;
+		MANCHESTER_DebugLED6Toggle();
+		xTaskNotifyFromISR(ManchTaskHandle, notification,
+				   eSetValueWithOverwrite,
+				   &xHigherPriorityTaskWoken);
+		STROBE_0;
+		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+	}
 }
 
 /**
@@ -812,107 +825,113 @@ void reverseBitString(uint8_t *data, size_t len) {
  * @return SUCCESS or ERROR
  */
 ErrorStatus MANCHESTER_Transmit(MANCHESTER_Data_t *data,
-                                MANCHESTER_Context_t *context) {
-  ErrorStatus retVal = SUCCESS;
-  BaseType_t mut = 0;
-  if ((data == NULL) || (context == NULL)) {
-    return ERROR;
-  }
-  if ((data->dataPtr == NULL) || (context->htim == NULL)) {
-    return ERROR;
-  }
-  TIM_HandleTypeDef *htim = context->htim;
-  /* Decide if rtos has already started */
-  if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
-    /* Take MUTEX */
-    mut = xSemaphoreTake(ManchesterTimer01MutexHandle, portMAX_DELAY);
-  }
+				MANCHESTER_Context_t *context)
+{
+	ErrorStatus retVal = SUCCESS;
+	BaseType_t mut = 0;
+	if ((data == NULL) || (context == NULL)) {
+		return ERROR;
+	}
+	if ((data->dataPtr == NULL) || (context->htim == NULL)) {
+		return ERROR;
+	}
+	TIM_HandleTypeDef *htim = context->htim;
+	/* Decide if rtos has already started */
+	if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+		/* Take MUTEX */
+		mut = xSemaphoreTake(ManchesterTimer01MutexHandle,
+				     portMAX_DELAY);
+	}
 
-  /* initialize timer hardware for transmission */
-  configTimer(htim, 5u);
-  htim->Instance->ARR = context->halfBitTime;
-  htim->Instance->EGR = TIM_EGR_UG;
+	/* initialize timer hardware for transmission */
+	configTimer(htim, 5u);
+	htim->Instance->ARR = context->halfBitTime;
+	htim->Instance->EGR = TIM_EGR_UG;
 
-  htim->Instance->SR = 0u;
-  htim->Instance->CR1 = htim->Instance->CR1 | TIM_CR1_CEN;
-  htim->Instance->DIER = htim->Instance->DIER | TIM_DIER_UIE;
+	htim->Instance->SR = 0u;
+	htim->Instance->CR1 = htim->Instance->CR1 | TIM_CR1_CEN;
+	htim->Instance->DIER = htim->Instance->DIER | TIM_DIER_UIE;
 
-  /* start bits transmission */
-  retVal = transmitStartStopBits(context->pulseTimeout, htim,
-                                 context->startStopBit, context->numStartBits);
-  if (retVal != SUCCESS) {
-    goto fExit;
-  }
-  /* data transmission */
-  size_t fullBytes;
-  fullBytes = (data->numBits / CHAR_BIT);
-  size_t bitsInTheLastByte;
-  bitsInTheLastByte = (data->numBits % CHAR_BIT);
-  size_t skipBits; /* number of highest bits of the last byte to be skipped */
-  skipBits = CHAR_BIT - bitsInTheLastByte;
-  size_t i = 0u;
-  uint8_t mask;
-  while (i < fullBytes) {
-    if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
-      mask = 0x01u;
-    } else {
-      mask = 0x80u;
-    }
-    do {
-      retVal =
-          transmitBit(context->pulseTimeout, htim, data->dataPtr[i] & mask);
-      if (retVal != SUCCESS) {
-        goto fExit;
-      }
-      if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
-        mask = (uint8_t)(mask << 1);
-      } else {
-        mask = (uint8_t)(mask >> 1);
-      }
+	/* start bits transmission */
+	retVal = transmitStartStopBits(context->pulseTimeout,
+				       context->startStopBit,
+				       context->numStartBits);
+	if (retVal != SUCCESS) {
+		goto fExit;
+	}
+	/* data transmission */
+	size_t fullBytes;
+	fullBytes = (data->numBits / CHAR_BIT);
+	size_t bitsInTheLastByte;
+	bitsInTheLastByte = (data->numBits % CHAR_BIT);
+	size_t skipBits; /* number of highest bits of the last byte to be skipped */
+	skipBits = CHAR_BIT - bitsInTheLastByte;
+	size_t i = 0u;
+	uint8_t mask;
+	while (i < fullBytes) {
+		if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
+			mask = 0x01u;
+		} else {
+			mask = 0x80u;
+		}
+		do {
+			retVal = transmitBit(context->pulseTimeout,
+					     data->dataPtr[i] & mask);
+			if (retVal != SUCCESS) {
+				goto fExit;
+			}
+			if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
+				mask = (uint8_t)(mask << 1u);
+			} else {
+				mask = (uint8_t)(mask >> 1u);
+			}
 
-    } while (mask != 0x00u);
-    i++;
-  }
-  while (bitsInTheLastByte > 0u) {
-    if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
-      mask = 0x01u;
-    } else {
-      mask = (0x80u >> skipBits);
-    }
-    retVal = transmitBit(context->pulseTimeout, htim,
-                         data->dataPtr[fullBytes] & mask);
-    if (retVal != SUCCESS) {
-      goto fExit;
-    }
-    if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
-      mask = (uint8_t)(mask << 1);
-    } else {
-      mask = (uint8_t)(mask >> 1);
-    }
-    bitsInTheLastByte--;
-  }
-  /* stop bits transmission */
-  retVal = transmitStartStopBits(context->pulseTimeout, htim,
-                                 context->startStopBit, context->numStopBits);
-  if (retVal != SUCCESS) {
-    goto fExit;
-  }
+		} while (mask != 0x00u);
+		i++;
+	}
+	if (bitsInTheLastByte != 0u) {
+		if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
+			mask = 0x01u;
+		} else {
+			mask = (0x80u >> skipBits);
+		}
+		while (bitsInTheLastByte > 0u) {
+			retVal = transmitBit(context->pulseTimeout,
+					     data->dataPtr[fullBytes] & mask);
+			if (retVal != SUCCESS) {
+				goto fExit;
+			}
+			if (context->bitOrder == MANCHESTER_BitOrderLSBFirst) {
+				mask = (uint8_t)(mask << 1);
+			} else {
+				mask = (uint8_t)(mask >> 1);
+			}
+			bitsInTheLastByte--;
+		}
+	}
+	/* stop bits transmission */
+	retVal = transmitStartStopBits(context->pulseTimeout,
+				       context->startStopBit,
+				       context->numStopBits);
+	if (retVal != SUCCESS) {
+		goto fExit;
+	}
 fExit:
 
-  /* deinitialize timer hardware after receiving */
-  htim->Instance->DIER = htim->Instance->DIER & ~(TIM_DIER_UIE);
-  htim->Instance->CR1 = htim->Instance->CR1 & ~(TIM_CR1_CEN);
-  configTimer(htim, 0u);
+	/* deinitialize timer hardware after receiving */
+	htim->Instance->DIER = htim->Instance->DIER & ~(TIM_DIER_UIE);
+	htim->Instance->CR1 = htim->Instance->CR1 & ~(TIM_CR1_CEN);
+	configTimer(htim, 0u);
 
-  /* Give MUTEX */
-  if (mut != 0) {
-    /* Decide if rtos has already started */
-    if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
-      mut = xSemaphoreGive(ManchesterTimer01MutexHandle);
-    }
-    (void)mut;
-  }
-  return retVal;
+	/* Give MUTEX */
+	if (mut != 0) {
+		/* Decide if rtos has already started */
+		if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+			mut = xSemaphoreGive(ManchesterTimer01MutexHandle);
+		}
+		(void)mut;
+	}
+	return retVal;
 }
 
 /**
@@ -922,14 +941,14 @@ fExit:
  * @param num number of repetitions
  * @return
  */
-ErrorStatus transmitStartStopBits(uint32_t timeoutMS, TIM_HandleTypeDef *htim,
-                                  uint8_t val, size_t num) {
-  ErrorStatus retVal = SUCCESS;
-  while ((num > 0u) && (retVal == SUCCESS)) {
-    retVal = transmitBit(timeoutMS, htim, val);
-    num--;
-  }
-  return retVal;
+ErrorStatus transmitStartStopBits(uint32_t timeoutMS, uint8_t val, size_t num)
+{
+	ErrorStatus retVal = SUCCESS;
+	while ((num > 0u) && (retVal == SUCCESS)) {
+		retVal = transmitBit(timeoutMS, val);
+		num--;
+	}
+	return retVal;
 }
 
 /**
@@ -939,42 +958,45 @@ ErrorStatus transmitStartStopBits(uint32_t timeoutMS, TIM_HandleTypeDef *htim,
  * @param val
  * @return
  */
-ErrorStatus transmitBit(uint32_t timeoutMS, TIM_HandleTypeDef *htim,
-                        uint8_t val) {
-  ErrorStatus retVal = SUCCESS;
+ErrorStatus transmitBit(uint32_t timeoutMS, uint8_t val)
+{
+	ErrorStatus retVal = SUCCESS;
 
-  const TickType_t xMaxBlockTime = pdMS_TO_TICKS(timeoutMS);
-  BaseType_t xResult;
-  uint32_t ulNotifiedValue;
+	const TickType_t xMaxBlockTime = pdMS_TO_TICKS(timeoutMS);
+	BaseType_t xResult;
+	uint32_t ulNotifiedValue;
 
-  /* Wait to be notified of an interrupt. */
-  xResult = xTaskNotifyWait(pdFALSE,          /* Don't clear bits on entry. */
-                            ULONG_MAX,        /* Clear all bits on exit. */
-                            &ulNotifiedValue, /* Stores the notified value. */
-                            xMaxBlockTime);
+	/* Wait to be notified of an interrupt. */
+	xResult = xTaskNotifyWait(
+		pdFALSE,	  /* Don't clear bits on entry. */
+		ULONG_MAX,	/* Clear all bits on exit. */
+		&ulNotifiedValue, /* Stores the notified value. */
+		xMaxBlockTime);
 
-  if ((xResult != pdPASS) || (ulNotifiedValue != 1u)) {
-    retVal = ERROR;
-    goto fExit;
-  }
+	if ((xResult != pdPASS) || (ulNotifiedValue != 1u)) {
+		retVal = ERROR;
+		goto fExit;
+	}
 
-  if (val == 0u) {
-    HAL_GPIO_WritePin(MANCHESTER_TX_GPIO_Port, MANCHESTER_TX_Pin,
-                      GPIO_PIN_RESET);
-  } else {
-    HAL_GPIO_WritePin(MANCHESTER_TX_GPIO_Port, MANCHESTER_TX_Pin, GPIO_PIN_SET);
-  }
-  /* Wait to be notified of an interrupt. */
-  xResult = xTaskNotifyWait(pdFALSE,          /* Don't clear bits on entry. */
-                            ULONG_MAX,        /* Clear all bits on exit. */
-                            &ulNotifiedValue, /* Stores the notified value. */
-                            xMaxBlockTime);
-  if ((xResult != pdPASS) || (ulNotifiedValue != 1u)) {
-    retVal = ERROR;
-    goto fExit;
-  }
+	if (val == 0u) {
+		HAL_GPIO_WritePin(MANCHESTER_TX_GPIO_Port, MANCHESTER_TX_Pin,
+				  GPIO_PIN_RESET);
+	} else {
+		HAL_GPIO_WritePin(MANCHESTER_TX_GPIO_Port, MANCHESTER_TX_Pin,
+				  GPIO_PIN_SET);
+	}
+	/* Wait to be notified of an interrupt. */
+	xResult = xTaskNotifyWait(
+		pdFALSE,	  /* Don't clear bits on entry. */
+		ULONG_MAX,	/* Clear all bits on exit. */
+		&ulNotifiedValue, /* Stores the notified value. */
+		xMaxBlockTime);
+	if ((xResult != pdPASS) || (ulNotifiedValue != 1u)) {
+		retVal = ERROR;
+		goto fExit;
+	}
 
-  HAL_GPIO_TogglePin(MANCHESTER_TX_GPIO_Port, MANCHESTER_TX_Pin);
+	HAL_GPIO_TogglePin(MANCHESTER_TX_GPIO_Port, MANCHESTER_TX_Pin);
 fExit:
-  return retVal;
+	return retVal;
 }

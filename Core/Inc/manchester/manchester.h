@@ -1,7 +1,11 @@
 #ifndef MANCHESTER_H
 #define MANCHESTER_H
 
-#include "stm32f1xx_hal.h"
+#ifdef STM32F303xC
+	#include "stm32f3xx_hal.h"
+#elif STM32F103xB
+	#include "stm32f1xx_hal.h"
+#endif
 
 //#define MANCHESTER_DEBUG
 
@@ -41,17 +45,6 @@ typedef enum MANCHESTER_BitOrder {
 } MANCHESTER_BitOrder_t;
 
 /**
- * The stage of comm. process
- */
-typedef enum MANCHESTER_RxStage {
-	MANCHESTER_Rx_Idle,
-	MANCHESTER_Rx_WaitForStart,
-	MANCHESTER_Rx_StartEdgeDetected,
-	MANCHESTER_Rx_DataReceiving,
-	MANCHESTER_Rx_OutOfSync
-} MANCHESTER_RxStage_t;
-
-/**
  * Context structure for MANCHESTER functions
  */
 typedef struct MANCHESTER_Context {
@@ -67,6 +60,8 @@ typedef struct MANCHESTER_Context {
 	uint32_t halfBitMaxTime;
 	uint32_t filterTime; /* input pin filtering time, us */
 	uint32_t pulseTimeout;	/* pulse capture timeout, ms */
+	/* run-time data */
+	uint32_t t0; /* the moment of rising edge has come */
 } MANCHESTER_Context_t;
 
 /**
@@ -79,10 +74,22 @@ typedef struct MANCHESTER_Data {
 //	ErrorStatus lastError;
 } MANCHESTER_Data_t;
 
-extern uint32_t captured1;
-extern uint8_t timerEvent;
+/**
+ * Pulse measurement
+ */
+typedef struct PulseData {
+	uint32_t	low;	/* channel1 - capture falling */
+	uint32_t	high;	/* channel1 - capture rising */
+	uint8_t		hasLow1T; /* if set, we have 1T low half-bit from prev. pulse */
+} PulseData_t;
 
-void MANCHESTER_DebugLEDToggle(void);
+/* pointer to the high 16 bit counter value - incremented every UIE interrupt */
+extern uint16_t highCntValue;
+
+/* flaf for UIE interrupt handler */
+extern uint8_t RecvState;
+
+void MANCHESTER_DebugLED8Toggle(void);
 
 ErrorStatus MANCHESTER_InitContext(MANCHESTER_Context_t *context,
 				   TIM_HandleTypeDef *htim, size_t numStartBits,
@@ -92,17 +99,8 @@ ErrorStatus MANCHESTER_InitContext(MANCHESTER_Context_t *context,
 
 ErrorStatus MANCHESTER_Receive(MANCHESTER_Data_t *data,
 			       MANCHESTER_Context_t *context);
-// ErrorStatus MANCHESTER_Receive(TIM_HandleTypeDef *htim, uint8_t *dataPtr,
-//			       size_t *pnumBits, size_t numStartStopBits,
-//			       size_t bitRate, MANCHESTER_BitOrder_t bitOrder,
-//			       uint8_t startStopBit);
 
 ErrorStatus MANCHESTER_Transmit(MANCHESTER_Data_t *data,
 				MANCHESTER_Context_t *context);
-
-//ErrorStatus MANCHESTER_Transmit(TIM_HandleTypeDef *htim, uint8_t *dataPtr,
-//				const size_t *pnumBits, size_t numStartStopBits,
-//				size_t bitRate, MANCHESTER_BitOrder_t bitOrder,
-//				uint8_t startStopBit);
 
 #endif // MANCHESTER_H
