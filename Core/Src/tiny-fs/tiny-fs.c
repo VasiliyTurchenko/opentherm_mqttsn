@@ -4,16 +4,49 @@
  *  @author turchenkov@gmail.com
  *  @bug
  *  @date 26-Jan-2019
+ *  @date 08-Mar-2019
  */
+
+#include "FreeRTOS.h"
+#include "task.h"
+#include "cmsis_os.h"
 
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <limits.h>
 
-#include "debug.h"
 
 #include "tiny-fs.h"
+
+#define SILENT
+
+#if defined(osCMSIS)
+
+#define TINY_FS_LOCK do { if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {taskENTER_CRITICAL();} } while (0)
+#define TINY_FS_UNLOCK do { if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {taskEXIT_CRITICAL();} } while (0)
+
+#else
+
+#define TINY_FS_LOCK
+#define TINY_FS_UNLOCK
+
+#endif
+
+#if defined(STM32F103xB)
+
+#include "stm32f1xx_hal_crc.h"
+
+#define CRC32
+
+#elif defined ()
+
+#define CRC32
+
+#endif
 
 NDEBUG_STATIC uint8_t getBitMask(uint8_t n);
 NDEBUG_STATIC size_t getClusterTableOffset(void);
@@ -112,7 +145,7 @@ void InitFS(void)
  * @param media
  * @return
  */
-ErrorStatus Format(const Media_Desc_p media)
+ErrorStatus Format(const Media_Desc_t * media)
 {
 	ErrorStatus retVal = ERROR;
 
@@ -122,7 +155,9 @@ ErrorStatus Format(const Media_Desc_p media)
 
 	retVal = SUCCESS;
 #ifdef DEBUG
+#ifndef SILENT
 	printf("Format. Reserved area size = %d bytes \n", RESERVED_AREA);
+#endif
 #endif
 	FAT_Begin_p f_begin = (FAT_Begin_p)DTA;
 	DIR_Entry_p p = (DIR_Entry_p)(&f_begin->entry0);
@@ -136,7 +171,9 @@ ErrorStatus Format(const Media_Desc_p media)
 		/* save initialized FAT entry */
 		size_t mediaAddr = getDIR_EntryOffset(i);
 #ifdef DEBUG
+#ifndef SILENT
 		printf("Format. Writing %d bytes to address %d\n", sizeof(DIR_Entry_t), mediaAddr);
+#endif
 #endif
 		retVal = media->writeFunc((uint8_t *)p, mediaAddr, sizeof(DIR_Entry_t));
 		if (retVal != SUCCESS) {
@@ -149,9 +186,11 @@ ErrorStatus Format(const Media_Desc_p media)
 	/* initialize cluster table */
 	const size_t clusterTableSize = getClusterTableSize(media);
 #ifdef DEBUG
+#ifndef SILENT
 	const size_t numClusters = getNumClusters(media);
 	printf("Format. Number of clusters = %d; cluster size = %d bytes; clusterTableSize =  %d bytes\n",
 	       numClusters, FS_CLUSTER_SIZE, clusterTableSize);
+#endif
 #endif
 	/* the first file is always cluster table */
 	const char *FATFile = "$$FAT$$";
@@ -168,7 +207,9 @@ ErrorStatus Format(const Media_Desc_p media)
 	size_t clusterFileSize = getClusterFileSize(clusterTableSize);
 
 #ifdef DEBUG
+#ifndef SILENT
 	printf("Format. clusterFileSize = %d\n", clusterFileSize);
+#endif
 #endif
 	/** @todo Add check DTA size against clusterFileSize */
 
@@ -190,10 +231,10 @@ ErrorStatus Format(const Media_Desc_p media)
 		goto fExit;
 	}
 
-	uint32_t fs_crc = CRC32(DTA, clusterTableSize, 0x00U);
+	uint32_t cTable_CRC = CRC32(DTA, clusterTableSize, 0x00U);
 	size_t CRCOffset = offsetof(FAT_Begin_t, entry0);
 	CRCOffset += offsetof(DIR_Entry_t, FileCRC32);
-	retVal = media->writeFunc((uint8_t *)&fs_crc, CRCOffset, sizeof(uint32_t));
+	retVal = media->writeFunc((uint8_t *)&cTable_CRC, CRCOffset, sizeof(uint32_t));
 	if (retVal != SUCCESS) {
 		goto fExit;
 	}
@@ -204,7 +245,9 @@ ErrorStatus Format(const Media_Desc_p media)
 	f_begin->h.FAT_ClusterTableSize = clusterTableSize;
 
 #ifdef DEBUG
+#ifndef SILENT
 	printf("Format. Witing %d bytes to address %d\n", sizeof(FAT_Header_t), 0U);
+#endif
 #endif
 	retVal = media->writeFunc((uint8_t *)f_begin, 0U, sizeof(FAT_Header_t));
 
@@ -214,7 +257,9 @@ ErrorStatus Format(const Media_Desc_p media)
 	}
 
 #ifdef DEBUG
+#ifndef SILENT
 	printf("Format. DIR_CRC32:%08x\n", f_begin->h.DIR_CRC32);
+#endif
 #endif
 
 fExit:
@@ -251,7 +296,7 @@ FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode)
 		return retVal;
 	}
 
-//	LOCK;
+	TINY_FS_LOCK;
 	size_t i = 0;
 	for (i = 0U; i < FS_CONCURRENT_FILES; i++) {
 		if (mutexes[i] != 0U) {
@@ -261,7 +306,7 @@ FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode)
 			break;
 		}
 	}
-//	UNLOCK;
+	TINY_FS_UNLOCK;
 	if (i == FS_CONCURRENT_FILES) {
 		retVal = FR_TOO_MANY_OPEN_FILES;
 		goto fExit;
@@ -305,7 +350,7 @@ FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode)
 			goto fExit;
 		}
 		/*2. reserve clusters */
-// TODO BUG HERE!
+		// TODO BUG HERE!
 		file->fileDir.FileAddress = allocateClusters(DTA, getClusterTableSize(file->media),
 							     file->fileDir.FileSize);
 		/*
@@ -467,6 +512,7 @@ NDEBUG_STATIC size_t getDIR_EntryOffset(size_t fileIndex)
  */
 FRESULT f_unlink(const TCHAR *path)
 {
+	(void)path;
 	return FR_INVALID_OBJECT;
 }
 
@@ -799,7 +845,7 @@ NDEBUG_STATIC uint8_t getBitMask(uint8_t n)
 }
 
 /**
- * @brief checkFATCRC32 checks entire FAT CRC32 foe equality to stored crc
+ * @brief checkFATCRC32 checks entire FAT CRC32 for equality to stored crc
  * @param crc stored crc32
  * @return 0 if all is OK, UINT32_MAX otherwise
  * @todo  implement later!
@@ -915,14 +961,8 @@ fExit:
  */
 NDEBUG_STATIC void encodeFName(char *name[MAX_FILENAME_LEN], const char *sname)
 {
-	/* space as padding */
-	size_t outCount = 0U;
-	while ((*sname != '\0') && (outCount < MAX_FILENAME_LEN)) {
-		uint8_t tmp = (uint8_t)*sname;
-		if ((tmp >= '0') && (tmp <= '9')) {
-			tmp -= 32;
-		}
-	}
+	(void)name;
+	(void)sname;
 }
 
 /**
@@ -932,7 +972,8 @@ NDEBUG_STATIC void encodeFName(char *name[MAX_FILENAME_LEN], const char *sname)
  */
 NDEBUG_STATIC void decodeFName(const char *name[MAX_FILENAME_LEN], char *sname)
 {
-	/* space as padding */
+	(void)name;
+	(void)sname;
 }
 
 /**
@@ -1107,7 +1148,8 @@ FRESULT f_write(FIL *fp, void *const buff, UINT btw, UINT *bw)
 		goto fExit;
 	}
 	fp->filePtr += to_write;
-	fp->fileDir.FileSize = (fp->filePtr > fp->fileDir.FileSize) ? (uint16_t)fp->filePtr : fp->fileDir.FileSize;
+	fp->fileDir.FileSize =
+		(fp->filePtr > fp->fileDir.FileSize) ? (uint16_t)fp->filePtr : fp->fileDir.FileSize;
 	*bw = to_write;
 	retVal = FR_OK;
 fExit:
@@ -1276,8 +1318,10 @@ fExit:
 NDEBUG_STATIC bool isPtrValid(const void *p)
 {
 	if (p == NULL) {
-		printf("Panic! Null pointer detected!\n");
-		exit(-3);
+//#ifdef DEBUG
+//		printf("Panic! Null pointer detected!\n");
+//		exit(-3);
+//#endif
 		return false;
 	} else {
 		return true;
@@ -1303,6 +1347,66 @@ NDEBUG_STATIC bool isMediaValid(const Media_Desc_p media)
 		goto fExit;
 	}
 	retVal = true;
+fExit:
+	return retVal;
+}
+
+/**
+ * @brief f_checkFS
+ * @param media
+ * @return
+ */
+FRESULT f_checkFS(const Media_Desc_t * media)
+{
+	FRESULT retVal = FR_INVALID_OBJECT;
+	if (isMediaValid(media) == false) {
+		goto fExit;
+	}
+	DIR_Entry_t FATFile;
+	/* 0th file must be "$$FAT$$" */
+	size_t mediaAddr = getDIR_EntryOffset(0U);
+	ErrorStatus mediaError;
+
+	mediaError = media->readFunc((uint8_t *)&FATFile, mediaAddr, sizeof(DIR_Entry_t));
+	if (mediaError != SUCCESS) {
+		retVal = FR_DISK_ERR;
+		goto fExit;
+	}
+
+	if (strcmp((char *)&FATFile.FileName, "$$FAT$$") != 0) {
+		retVal = FR_NO_FILE;
+		goto fExit;
+	}
+	if (FATFile.FileStatus != FStateFAT) {
+		retVal = FR_NO_FILE;
+		goto fExit;
+	}
+	uint32_t DIR_CRC = 0U; /* ROOT directory's CRC32 */
+
+	for (size_t i = 0U; i < DIR_ENTRIES; ++i) {
+		size_t mediaAddr = getDIR_EntryOffset(i);
+		memset(&FATFile, 0, sizeof(DIR_Entry_t));
+
+		mediaError = media->readFunc((uint8_t *)&FATFile, mediaAddr, sizeof(DIR_Entry_t));
+		if (mediaError != SUCCESS) {
+			retVal = FR_DISK_ERR;
+			goto fExit;
+		} else {
+			DIR_CRC = CRC32((uint8_t *)&FATFile, sizeof(DIR_Entry_t), DIR_CRC);
+		}
+	}
+	/* read CRC32 from header */
+	FAT_Header_t header;
+	mediaError = media->readFunc((uint8_t *)&header, 0U, sizeof(FAT_Header_t));
+	if (mediaError != SUCCESS) {
+		retVal = FR_DISK_ERR;
+		goto fExit;
+	}
+	if (header.DIR_CRC32 != DIR_CRC) {
+		retVal = FR_NO_FILESYSTEM;
+	} else {
+		retVal = FR_OK;
+	}
 fExit:
 	return retVal;
 }

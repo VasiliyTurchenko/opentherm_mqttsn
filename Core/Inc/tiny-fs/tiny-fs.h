@@ -4,6 +4,7 @@
  *  @author turchenkov@gmail.com
  *  @bug
  *  @date 26-Jan-2019
+ *  @date 08-Mar-2019
  */
 
 #ifndef TINY_FS_H
@@ -14,22 +15,30 @@ extern "C"
 {
 #endif
 
-#include <stdint.h>
-#include <stddef.h>
-#include <limits.h>
-#include <stdbool.h>
+#ifdef STM32F303xC
 
-#include "main.h"
+#include "stm32f303xc.h"
+#include "stm32f3xx_hal.h"
+#include "stm32f3xx_hal_gpio.h"
+#include "stm32f3xx_hal_rcc.h"
+#define NDEBUG_STATIC static inline
+
+#elif STM32F103xB
+
+#include "stm32f103xb.h"
+#include "stm32f1xx_hal.h"
+#include "stm32f1xx_hal_gpio.h"
+#include "stm32f1xx_hal_rcc.h"
+#define NDEBUG_STATIC static inline
+
+#else
 
 #include "debug.h"
-
-
-#ifndef MCU_TARGET
-#include "mock.h"
 #include "port.h"
+#include "mock.h"
+
 #endif
 
-//#include "stm32f3xx.h"
 
 #define MAX_FILENAME_LEN 7U
 
@@ -207,6 +216,7 @@ typedef FAT_Begin_t *FAT_Begin_p;
 /* these functions ain't static only in DEBUG mode */
 
 #ifdef DEBUG
+#if !defined(STM32F303xC) && !defined(STM32F103xB)
 
 uint32_t findEntry(const Media_Desc_p media, const DIR_Entry_p entry);
 
@@ -226,10 +236,11 @@ size_t getClusterTableSize(const Media_Desc_p media);
 size_t findMaxFreeBlock(const Media_Desc_p media);
 
 #endif
+#endif
 
 void InitFS(void);
 
-ErrorStatus Format(const Media_Desc_p media);
+ErrorStatus Format(const Media_Desc_t * media);
 
 FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode);
 
@@ -252,6 +263,8 @@ FSIZE_t f_tell (FIL* fp);
 FRESULT f_write (FIL* fp, void * const buff, UINT btw, UINT* bw);
 
 FRESULT f_read(FIL *fp, void *buff, UINT btr, UINT *br);
+
+FRESULT f_checkFS(const Media_Desc_t *media);
 
 const char *FRESULT_String(FRESULT res);
 

@@ -7,8 +7,8 @@
   * @modified 20-Jan-2019
   * @verbatim
   ==============================================================================
-                  ##### How to use this driver #####
-	
+		  ##### How to use this driver #####
+
   ==============================================================================
   * @endverbatim
   */
@@ -18,7 +18,7 @@
 
 #include "my_comm.h"
 #include "usart.h"
-//#include "lan.h"
+#include "lan.h"
 
 uint8_t TxBuf1[BUFSIZE];
 uint8_t TxBuf2[BUFSIZE];
@@ -40,6 +40,7 @@ uint8_t ActiveTxBuf;
 
 uint8_t XmitState;
 uint8_t ActBufState;
+bool TransmitFuncRunning;
 
 ErrorStatus XmitError = SUCCESS;
 
@@ -47,7 +48,7 @@ size_t MaxTail = 0U;
 
 /**
   * @brief InitComm initializes buffers and pointers
-  * @note  
+  * @note
   * @param  none
   * @retval none
   */
@@ -84,21 +85,28 @@ ErrorStatus InitComm(void)
 /**
   * @brief  Transmit invokes transmit procedure
   * @param  ptr is a pointer to udp socket
-  * @note   if ther is no sockets, ptr must be NULL  
+  * @note   if ther is no sockets, ptr must be NULL
   * @retval ERROR or SUCCESS
   */
 ErrorStatus Transmit(const void *ptr)
 {
 	ErrorStatus result = SUCCESS;
+
+	TransmitFuncRunning = true;
+
 	static HAL_StatusTypeDef XmitStatus;
 
-	taskENTER_CRITICAL();
+	if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+		taskENTER_CRITICAL();
+	}
 
 	if ((XmitState != STATE_UNLOCKED) || (ActBufState == STATE_LOCKED) ||
 	    (TxTail == (size_t)0U)) {
 		/* usart didn't transmit yet OR outfunc is runnung OR  active buffer is empty */
-		taskEXIT_CRITICAL();
-		return SUCCESS;
+		if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+			taskEXIT_CRITICAL();
+		}
+		goto fExit;
 	}
 	// there is no ongoing transmission
 	XmitState = STATE_LOCKED;   // set lock
@@ -117,26 +125,34 @@ ErrorStatus Transmit(const void *ptr)
 			TxTail = 0U; // RESET index
 			pXmitTxBuf = TxBuf2;
 		} else {
-			ActBufState =
-				STATE_UNLOCKED; // wrong act buf pointer!!!
+			ActBufState = STATE_UNLOCKED; // wrong act buf pointer!!
 			XmitState = STATE_UNLOCKED;
-			taskEXIT_CRITICAL();
-			return SUCCESS;
+			if (xTaskGetSchedulerState() !=
+			    taskSCHEDULER_NOT_STARTED) {
+				taskEXIT_CRITICAL();
+			}
+			goto fExit;
 		}
 	}
+
 	// here all the conditions are OK. let's send!
 	ActBufState = STATE_UNLOCKED;
-	taskEXIT_CRITICAL();
+	if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+		taskEXIT_CRITICAL();
+	}
+
 	if (ptr == NULL) {
 		XmitStatus = HAL_UART_Transmit_DMA(
 			&huart3, (uint8_t *)pXmitTxBuf, (uint16_t)tmptail);
 		result = (XmitStatus == HAL_ERROR) ? ERROR : SUCCESS;
 	} else {
-		/*		result = write_socket((socket_p)ptr, pXmitTxBuf,
-				      (uint32_t)tmptail);
-*/
+		result = write_socket((socket_p)ptr, pXmitTxBuf,
+				      (int32_t)tmptail);
+
 		XmitState = STATE_UNLOCKED;
 	}
+fExit:
+	TransmitFuncRunning = false;
 	return result;
 }
 /* end of the function Transmit() */
@@ -150,18 +166,14 @@ ErrorStatus Transmit(const void *ptr)
 void myxfunc_out(unsigned char c)
 {
 	while (ActBufState == STATE_LOCKED) {
+		/* alas, the active buffer is locked */
 		taskYIELD();
 	}
-	if (ActBufState ==
-	    STATE_UNLOCKED) { /* alas, the active buffer is locked */
+	if (ActBufState == STATE_UNLOCKED) {
 		ActBufState = STATE_LOCKED; /* temporary lock the buffer */
 
 		MaxTail = (TxTail > MaxTail) ? TxTail : MaxTail;
 
-		/*		if (TxTail < BUFSIZE) {		*/ /* there is room for one char */
-		/*			*((uint8_t*)pActTxBuf+TxTail) = c;
-			TxTail++; 
-*/
 		while (TxTail == BUFSIZE) {
 			ActBufState = STATE_UNLOCKED;
 			taskYIELD();
@@ -173,5 +185,37 @@ void myxfunc_out(unsigned char c)
 	}
 }
 /* end of the function  */
+
+/**
+ * @brief myxfunc_out_no_RTOS puts the char to the xmit buffer
+  * @note   helper for xprintf
+  * @param  char
+  * @retval none
+  */
+void myxfunc_out_no_RTOS(unsigned char c)
+{
+	if (ActBufState == STATE_UNLOCKED) {
+		ActBufState = STATE_LOCKED;
+		MaxTail = (TxTail > MaxTail) ? TxTail : MaxTail;
+		if (TxTail < BUFSIZE) {
+			*((uint8_t *)pActTxBuf + TxTail) = c;
+			TxTail++;
+		}
+		ActBufState = STATE_UNLOCKED;
+	}
+}
+
+/**
+ * @brief HAL_UART_TxCpltCallback
+ * @param huart
+ */
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+	if (huart == &huart3) {
+		/* transmit completed! */
+		XmitState = STATE_UNLOCKED;
+	}
+}
+/* end of HAL_UART_TxCpltCallback() */
 
 /* ############################### end of file ############################### */

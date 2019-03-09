@@ -5,11 +5,15 @@
  * @version 0.0.1
  *
  */
- 
+
 #ifndef _NVMEM_H
 #define _NVMEM_H
 
-#include "stm32f1xx.h"
+#ifdef STM32F303xC
+	#include "stm32f3xx_hal.h"
+#elif STM32F103xB
+	#include "stm32f1xx_hal.h"
+#endif
 
 
 #define	_25LC64
@@ -34,7 +38,13 @@ ErrorStatus Read_FRAM(uint8_t * addr_to, uint32_t fram_addr, size_t frlen);
 
 ErrorStatus Write_FRAM(uint8_t * addr_from, uint32_t fram_addr, size_t frlen);
 
+ErrorStatus Quick_FRAM_Test(void);
+
 void Test_FRAM(void);
+
+__attribute ((noreturn)) void FRAM_Write_Error_Handler();
+
+__attribute ((noreturn)) void FRAM_Read_Error_Handler();
 
 
 #endif

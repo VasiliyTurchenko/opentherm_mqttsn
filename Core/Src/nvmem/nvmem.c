@@ -14,9 +14,10 @@
 
 #include "nvmem.h"
 #include "spi.h"
+#include "rtc.h"
+#include "rtc_magics.h"
 #include "xprintf.h"
 #include "debug_settings.h"
-
 
 #define	FRAM_SPI	hspi2
 
@@ -44,10 +45,10 @@ ErrorStatus Read_FRAM(uint8_t * addr_to, uint32_t fram_addr, size_t frlen)
 	result = ERROR;
 	uint8_t		t_tmp[3];
 	BaseType_t	mut;
-	
+
 	if (frlen == 0U) { goto fExit; }
 	if ((fram_addr + frlen) > NVMEM_SIZE) { goto fExit; }
-/* Decide if rtos has already started */	
+/* Decide if rtos has already started */
 	if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
 /* Take MUTEX */
 		mut = xSemaphoreTake(ETH_Mutex01Handle, portMAX_DELAY);
@@ -80,12 +81,12 @@ ErrorStatus Read_FRAM(uint8_t * addr_to, uint32_t fram_addr, size_t frlen)
 	}
 	FRAM_CS_H;
 /* Give MUTEX */
-/* Decide if rtos has already started */	
+/* Decide if rtos has already started */
 	if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
 		mut = xSemaphoreGive(ETH_Mutex01Handle);
 	}
 	(void)mut;
-fExit:	
+fExit:
 	return result;
 }
 
@@ -104,19 +105,19 @@ ErrorStatus Write_FRAM(uint8_t * addr_from, uint32_t fram_addr, size_t frlen)
 	ErrorStatus	result;
 	result = ERROR;
 	uint8_t		t_tmp[3];
-	BaseType_t	mut;	
-	
+	BaseType_t	mut;
+
 	if (frlen == 0U) { goto fExit; }
 	if ((fram_addr + frlen) > NVMEM_SIZE) { goto fExit; }
-/* Decide if rtos has already started */	
+/* Decide if rtos has already started */
 	if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
 /* Take MUTEX */
 		mut = xSemaphoreTake(ETH_Mutex01Handle, portMAX_DELAY);
 	}
-	HAL_StatusTypeDef	IOresult;		
+	HAL_StatusTypeDef	IOresult;
 	/* 1. WREN out */
 	TX_done_flag = 0U;
-	t_tmp[0] = FRAM_WREN;		
+	t_tmp[0] = FRAM_WREN;
 	FRAM_CS_L;
 	if (HAL_SPI_Transmit(&FRAM_SPI,\
 			    (uint8_t*)t_tmp, \
@@ -156,7 +157,7 @@ ErrorStatus Write_FRAM(uint8_t * addr_from, uint32_t fram_addr, size_t frlen)
 			    (uint8_t*)t_tmp, \
 			    0x03U, \
 			    0x03U) != HAL_OK) { goto fGiveAndExit; }
-		
+
 	if (frlen > sizeof(uint16_t)) {
 		IOresult = HAL_SPI_Transmit_DMA(&FRAM_SPI, addr_from, (uint16_t)frlen);
 		while (TX_done_flag == 0U) {
@@ -182,7 +183,7 @@ ErrorStatus Write_FRAM(uint8_t * addr_from, uint32_t fram_addr, size_t frlen)
 			    0x03U) != HAL_OK) { result = ERROR; }
 fGiveAndExit:
 	FRAM_CS_H;
-/* Decide if rtos has already started */	
+/* Decide if rtos has already started */
 	if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
 		xSemaphoreGive(ETH_Mutex01Handle);
 	}
@@ -191,14 +192,72 @@ fExit:
 	return result;
 }
 
+
 /**
-  * @brief  Test_FRAM
-  * @note  
+  * @brief  Handle_FRAM_Write_error must handle all the errors related to unsuccessful access to NVMEM info
+  * @note
   * @param  none
   * @retval none
   */
- 
-#if (0)  
+__attribute ((noreturn)) void FRAM_Write_Error_Handler()
+{
+	/* save tag BAD_NVMEM to backup domain */
+	HAL_RTCEx_BKUPWrite(&hrtc, MAGIC_REG, BAD_FRAM_MAGIC);
+	/* reboot via watchdog */
+	while (1) { ; }
+}
+
+/**
+  * @brief  Handle_FRAM_Read_error must handle all the errors related to unsuccessful access to NVMEM info
+  * @note
+  * @param  none
+  * @retval none
+  */
+__attribute ((noreturn)) void FRAM_Read_Error_Handler()
+{
+	FRAM_Write_Error_Handler();	// temporary solution
+}
+
+/**
+ * @brief Quick_FRAM_Test
+ * @return ERROR or SUCCESS
+ */
+ErrorStatus Quick_FRAM_Test(void)
+{
+	ErrorStatus retVal = SUCCESS;
+	size_t i = 0U;
+
+	while (i < NVMEM_SIZE) {
+		uint8_t mask = 0x80U;
+		while (mask != 0U) {
+			retVal = Write_FRAM(&mask, i, sizeof(mask));
+			if (retVal != SUCCESS) {
+				break;
+			}
+			uint8_t rd;
+			retVal = Read_FRAM(&rd, i, sizeof(rd));
+			if ((retVal != SUCCESS) || (mask != rd)) {
+				retVal = ERROR;
+				break;
+			}
+			mask = (uint8_t)mask >> 1;
+		}
+		if (retVal == ERROR) {
+			break;
+		}
+	}
+	return retVal;
+}
+
+
+/**
+  * @brief  Test_FRAM
+  * @note
+  * @param  none
+  * @retval none
+  */
+
+#if (0)
 void Test_FRAM(void)
 {
 	const	uint16_t	block_sizes[] = {0U, 1U, 2U, 4U, 8U, 16U, 256U, 512U};
@@ -207,23 +266,23 @@ void Test_FRAM(void)
 
 // #define		_BYTE_TEST
 
-#ifdef		_BYTE_TEST	
+#ifdef		_BYTE_TEST
 	static volatile uint8_t		buffr;
 	static volatile uint8_t		buffw;
 #else	/* dword test */
 	static volatile uint32_t		buffr[16];
 	static volatile uint32_t		buffw[16];
-#endif	
+#endif
 	uint32_t	curr_addr;
 
 	uint32_t		i;
 	ErrorStatus	res;
 
 	xprintf("\n test loop started\n");
-	
+
 	i = 0U;
 	while (i < NVMEM_SIZE) {
-#ifdef		_BYTE_TEST	        
+#ifdef		_BYTE_TEST
 		buffw = (uint8_t)i;
 #else
 		buffw[0] = i;
@@ -234,10 +293,10 @@ void Test_FRAM(void)
 		}
 		res = Read_FRAM((uint8_t*)&buffr, i, sizeof(buffr));
 		if (res != SUCCESS) {
-			xprintf("buff read ERR ar addr %d\n", i); 
+			xprintf("buff read ERR ar addr %d\n", i);
 		}
 		if (memcmp( (void*)buffw, (void*)buffr, sizeof(buffr)) != 0) {
-#ifdef		_BYTE_TEST	        		
+#ifdef		_BYTE_TEST
 		xprintf("addr: %d, wr: %d, rd: %d\n", i, buffw, buffr);
 #else
 		xprintf("uint32_t[16] cmp err at addr: %d\n", i);

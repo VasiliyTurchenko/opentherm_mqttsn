@@ -27,12 +27,12 @@
 
 /*-------------------------------------------------------------------------------------------------
 
-                        Packet size
-                        
+			Packet size
+
 
 
 USART Speed
-                64	128	256	512	1024	2048
+		64	128	256	512	1024	2048
 115200	11520	5,6	11,1	22,2	44,4	88,9	177,8
 57600	5760	11,1	22,2	44,4	88,9	177,8	355,6
 38400	3840	16,7	33,3	66,7	133,3	266,7	533,3
@@ -69,6 +69,7 @@ extern uint8_t ActiveTxBuf;
 
 extern uint8_t XmitState;
 extern uint8_t ActBufState;
+extern bool TransmitFuncRunning;
 // extern	HAL_StatusTypeDef	XmitStatus;
 
 extern ErrorStatus XmitError;
@@ -78,6 +79,8 @@ extern size_t MaxTail;
 ErrorStatus InitComm(void);
 ErrorStatus Transmit(const void *ptr);
 void myxfunc_out(unsigned char c);
+void myxfunc_out_no_RTOS(unsigned char c);
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
 
 #endif
 /* ############################### end of the file ########################## */

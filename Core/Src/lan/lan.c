@@ -19,7 +19,7 @@
 //#define		UDP_PAYLOAD_START	((uint16_t)42)
 
 // MAC address
-static uint8_t mac_addr[6];
+uint8_t mac_addr[6];
 
 // for statistic purpose
 
@@ -47,9 +47,9 @@ static volatile uint32_t wr_soc_err = 0u;
 
 // IP address/mask/gateway
 #ifndef WITH_DHCP
-static uint32_t ip_addr;
-static uint32_t ip_mask;
-static uint32_t ip_gateway;
+uint32_t ip_addr;
+uint32_t ip_mask;
+uint32_t ip_gateway;
 #endif
 
 #define ip_broadcast (ip_addr | ~ip_mask)
@@ -1511,13 +1511,13 @@ uint8_t *mac_to_enc(void)
 
 void lan_init() /* NOT THREAD-SAFE */
 {
-	Get_MAC(mac_addr);
-	ip_pair_t tmp;
-	Get_IP_Params(&tmp, MY_IP);
-	ip_addr = tmp.ip;
-	Get_IP_Params(&tmp, DEFAULT_GW);
-	Get_IP_Params(&tmp, MY_NETMASK);
-	ip_mask = tmp.ip;
+//	Get_MAC(mac_addr);
+//	ip_pair_t tmp;
+//	Get_IP_Params(&tmp, MY_IP);
+//	ip_addr = tmp.ip;
+//	Get_IP_Params(&tmp, DEFAULT_GW);
+//	Get_IP_Params(&tmp, MY_NETMASK);
+//	ip_mask = tmp.ip;
 
 	uint8_t i;
 	for (i = 0u; i < NUM_ETH_BUFFERS; i++) {

@@ -59,8 +59,8 @@ enum	SocketState			/*!< socket state */
 	{
 		SOCK_BUSY = 1,
 		SOCK_FREE = 2,
-	};	
-	
+	};
+
 
 enum	YesNo				/*!< type for events */
 	{
@@ -95,7 +95,7 @@ enum	YesNo				/*!< type for events */
 #endif
 
 #define		UDP_PAYLOAD_START	((uint16_t)42)
-                                        
+
 /*
  * BE conversion
  */
@@ -153,7 +153,7 @@ typedef  struct __attribute__((packed)) arp_message {
 
 typedef struct arp_cache_entry {
 			uint32_t	ip_addr;
-			int32_t		age;			
+			int32_t		age;
 			uint8_t		mac_addr[6];
 
 	} arp_cache_entry_t;
@@ -162,7 +162,7 @@ typedef struct arp_cache_entry {
  * IP
  */
 /* added 14-Lan-2018 */
-	
+
 #define			SOC_MODE_READ		(uint8_t)0x01 /*!< read data w/o waiting */
 #define			SOC_MODE_WRITE		(uint8_t)0x02 /*!< for transmission */
 #define			SOC_NEW_DATA		(uint8_t)0x80 /*!< new data has arrived */
@@ -174,8 +174,8 @@ typedef struct arp_cache_entry {
 enum	DataLost_	{		/* Is the data lost or not */
 	SOC_DATA_NOT_LOST = 0,
 	SOC_DATA_LOST
- 	};
-	
+	};
+
 typedef	enum	DataLost_	DataLost_t;
 
 
@@ -186,7 +186,7 @@ typedef  struct /*__attribute__((packed))*/ socket {
 			uint32_t		loc_ip_addr;		/*!< local IP*/
 			uint32_t		rem_ip_addr;		/*!< remote IP */
 			uint16_t		rem_port;		/*!< remote port */
-			uint16_t		loc_port;		/*!< local port */			
+			uint16_t		loc_port;		/*!< local port */
 			uint16_t		last_error;		/*!< last error */
 			uint16_t		len;			/*!< length of of the received eth.frame */
 			enum SocketState        soc_state;
@@ -196,7 +196,7 @@ typedef  struct /*__attribute__((packed))*/ socket {
 	} socket_t;
 
 typedef	socket_t	*socket_p;				/*!< pointer to the socket */
- 
+
 
 #define IP_PROTOCOL_ICMP	1
 #define IP_PROTOCOL_TCP		6
@@ -379,6 +379,13 @@ typedef enum dhcp_status_code {
 
 /*extern uint8_t 	net_buf[NUM_ETH_BUFFERS][ENC28J60_MAXFRAME]; */
 
+#ifndef WITH_DHCP
+extern uint32_t ip_addr;
+extern uint32_t ip_mask;
+extern uint32_t ip_gateway;
+#endif
+
+extern uint8_t mac_addr[6];
 
 // LAN calls
 void lan_init(void);
@@ -408,7 +415,7 @@ uint32_t htonl(uint32_t a);
 
 /**
   * assigns a socket from free pool
-  * @param remIP remote IP 
+  * @param remIP remote IP
   * @param remPort remote port
   * @param locPort local port
   * @param mode opening mode - read or write
