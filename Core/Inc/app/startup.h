@@ -24,6 +24,7 @@
 	#include "stm32f1xx_hal.h"
 #endif
 
+#include "tiny-fs.h"
 
 /** @brief BOOT type */
 typedef enum {
@@ -64,7 +65,8 @@ extern volatile boot_action_t	Boot_Action;
 extern volatile uint32_t	Saved_Magic_Bits;	/* watchdog */
 extern const Media_Desc_t Media0;			/* FRAM media description */
 
-extern volatile bool Transmit_to_UART;
+extern volatile bool Transmit_non_RTOS;
+extern volatile bool Transmit_nonRTOS;
 
 ErrorStatus AppStartUp(void);
 void Set_Reboot_Cause(reb_cause_t c_arg);

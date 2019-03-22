@@ -11,8 +11,12 @@
 
 #include <stdint.h>
 
-#include "stm32f1xx.h"
-#include "conf_fn.h"
+#ifdef STM32F303xC
+	#include "stm32f3xx.h"
+#elif STM32F103xB
+	#include "stm32f1xx.h"
+#endif
+
 
 #define NTP_TIMESTAMP_DELTA 2208988800U
 #define	TIMEZONE	( 3U * 3600U )
@@ -27,9 +31,9 @@
   {
 
     uint8_t li_vn_mode;      // Eight bits. li, vn, and mode.
-                             // li.   Two bits.   Leap indicator.
-                             // vn.   Three bits. Version number of the protocol.
-                             // mode. Three bits. Client will pick mode 3 for client.
+			     // li.   Two bits.   Leap indicator.
+			     // vn.   Three bits. Version number of the protocol.
+			     // mode. Three bits. Client will pick mode 3 for client.
 
     uint8_t stratum;         // Eight bits. Stratum level of the local clock.
     uint8_t poll;            // Eight bits. Maximum interval between successive messages.

@@ -103,4 +103,6 @@ ErrorStatus MANCHESTER_Receive(MANCHESTER_Data_t *data,
 ErrorStatus MANCHESTER_Transmit(MANCHESTER_Data_t *data,
 				MANCHESTER_Context_t *context);
 
+void MANCHESTER_TimerISR(void);
+
 #endif // MANCHESTER_H

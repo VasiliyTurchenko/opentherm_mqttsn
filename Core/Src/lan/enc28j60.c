@@ -33,22 +33,24 @@
 	#endif
 #endif
 
-  
- 
- 
+
+
+
 #define		ENC28J60_CS_L	{ ENC28J60_CS_GPIO_Port->BSRR = (uint32_t)ENC28J60_CS_Pin << 16U; }
 #define		ENC28J60_CS_H	{ ENC28J60_CS_GPIO_Port->BSRR = ENC28J60_CS_Pin; }
 
 #define		ENC28J60_RST_L	{ ENC28J60_RESET_GPIO_Port->BSRR = (uint32_t)ENC28J60_RESET_Pin << 16U;}
 #define		ENC28J60_RST_H	{ ENC28J60_RESET_GPIO_Port->BSRR = ENC28J60_RESET_Pin; }
 
+/* set by SPI routines */
+/* shared by all functions using spi1*/
 extern	uint8_t		RX_ready_flag;
 extern	uint8_t		TX_done_flag;
 
 extern osMutexId ETH_Mutex01Handle;
 
-uint8_t enc28j60_current_bank = 0;
-uint16_t enc28j60_rxrdpt = 0;		// stored value of the read ptr
+static uint8_t enc28j60_current_bank = 0;
+static uint16_t enc28j60_rxrdpt = 0;		// stored value of the read ptr
 
 //
 extern uint8_t * mac_to_enc(void);
@@ -59,7 +61,7 @@ volatile	uint32_t	enc_hw_err_cnt = 0;
 
 /**
   * @brief  enc28j60_rxtx is a basic function for reading and writing ENC28J60 registers
-  * @note  
+  * @note
   * @param  a data byte to be sent
   * @retval a read data byte
   */
@@ -76,7 +78,7 @@ static	HAL_StatusTypeDef	IOresult;
 //	ENC28J60_CS_L;
 	IOresult = HAL_SPI_TransmitReceive(&hspi2, &data, &retdata, (uint16_t)0x01, (uint32_t)0x05);
 //	ENC28J60_CS_H;
-//	if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {	
+//	if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
 //		taskEXIT_CRITICAL();
 //	}
 	return retdata;
@@ -122,9 +124,9 @@ void enc28j60_soft_reset(void)
 	ENC28J60_CS_H;
 
 	enc28j60_current_bank = 0;
-	
+
 //	_delay_ms(1); // Wait until device initializes
-	HAL_Delay(10);	
+	HAL_Delay(10);
 }
 
 
@@ -197,24 +199,24 @@ void enc28j60_read_buffer(uint8_t *buf, uint16_t len)
 	ENC28J60_CS_L;
 	enc28j60_tx(ENC28J60_SPI_RBM);
 
-#ifdef	USE_HAL_IO_SPI	
+#ifdef	USE_HAL_IO_SPI
 	while(len--) {
 		*(buf++) = enc28j60_rx();
 	}
-	
+
 #endif
 #ifdef	USE_HAL_DMA_SPI
 	HAL_StatusTypeDef	IOresult;
 	RX_ready_flag = 0;
-	
+
 	if (len > sizeof(uint16_t)) {
 		IOresult = HAL_SPI_Receive_DMA(&hspi2, buf, len);
 		while (RX_ready_flag == 0) { taskYIELD();}
-	
+
 	} else {
 		IOresult = HAL_SPI_Receive(&hspi2, buf, len, 05);
 	}
-#endif	
+#endif
 
 	ENC28J60_CS_H;
 }
@@ -224,8 +226,8 @@ void enc28j60_write_buffer(uint8_t *buf, uint16_t len)
 {
 	ENC28J60_CS_L;
 	enc28j60_tx(ENC28J60_SPI_WBM);
-	
-#ifdef	USE_HAL_IO_SPI	
+
+#ifdef	USE_HAL_IO_SPI
 	while(len--)  {
 		enc28j60_tx(*(buf++));
 	}
@@ -233,14 +235,14 @@ void enc28j60_write_buffer(uint8_t *buf, uint16_t len)
 #ifdef	USE_HAL_DMA_SPI
 	HAL_StatusTypeDef	IOresult;
 	TX_done_flag = 0;
-	
+
 	if (len > sizeof(uint16_t)) {
 		IOresult = HAL_SPI_Transmit_DMA(&hspi2, buf, len);
 		while (TX_done_flag == 0) { taskYIELD();}
 	} else {
 		IOresult = HAL_SPI_Transmit(&hspi2, buf, len, 05);
 	}
-#endif	
+#endif
 	ENC28J60_CS_H;
 }
 
@@ -274,11 +276,11 @@ void enc28j60_init(const uint8_t *macadr)
 	// Initialize SPI
 	// Already done by HAL MSP init
 	// Reset ENC28J60
-	
+
 	ENC28J60_RST_L;
 	HAL_Delay(10);
 	ENC28J60_RST_H;
-	
+
 	enc28j60_soft_reset();
 
 	uint8_t		s = 0U;

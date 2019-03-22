@@ -15,10 +15,14 @@
 #include "rtc.h"
 
 #include "rtc_magics.h"
+
+#include "config_files.h"
+
 #include "xprintf.h"
 #include "my_comm.h"
 #include "nvmem.h"
 #include "tiny-fs.h"
+#include "file_io.h"
 
 #include "ascii_helpers.h"
 
@@ -34,8 +38,6 @@
 
 static inline void Cold_Boot(void);
 static Boot_t HW_Boot_Select(void);
-static FRAM_state_t Get_FRAM_State(void);
-static boot_action_t Get_Reboot_Action(void);
 static FRESULT SaveIPCfg(const Media_Desc_t *media);
 static ErrorStatus Init_NIC(const Media_Desc_t *media);
 
@@ -45,7 +47,7 @@ volatile boot_action_t Boot_Action;
 volatile uint32_t Saved_Magic_Bits; /* watchdog */
 
 /* where to put diagnostic data */
-volatile bool Transmit_to_UART;
+volatile bool Transmit_non_RTOS;
 
 /* FRAM media description */
 const Media_Desc_t Media0 = { .readFunc = Read_FRAM,
@@ -53,46 +55,11 @@ const Media_Desc_t Media0 = { .readFunc = Read_FRAM,
 			      .MediaSize = NVMEM_SIZE,
 			      .mode = MEDIA_RW };
 
-/* configuration files */
+/* configuration file */
 static const char *IP_Cfg_File = "IP_CFG";
 
-/* IP_Cfg_File format */
-//static const char *IP_Cfg_File_Default =
-//	"MAC_AABBCCDDEEFF     \n" // ENC28J60 MAC
-//	"IP__19216800000100000\n" // ip address
-//	"NM__25525525500000000\n" // netmask
-//	"GW__19216800000100000\n" // default gateway
-//	"LIP_19216800000105000\n" // log listener ip: port
-//	"NTP119216800000100123\n" // NTP server 1 ip: port
-//	"NTP219216800000100123\n";// NTP server 2 ip: port
-
-#define MAC_LEN 12U
-#define IP_LEN 12U
-#define PORT_LEN 5U
-
-struct __attribute__((packed)) MAC {
-	char mac_h[4];
-	char mac_v[MAC_LEN];
-	char mac_pad[6];
-};
-
-struct __attribute__((packed)) IP {
-	char ip_n[4];
-	char ip_v[IP_LEN];
-	char ip_p[PORT_LEN];
-	char ip_nl[1];
-};
-
-struct __attribute__((packed)) ip_cfg {
-	struct MAC MAC_addr;
-	struct IP Own_IP;
-	struct IP Net_Mask;
-	struct IP GW;
-	struct IP LogIP;
-	struct IP NTP1;
-	struct IP NTP2;
-	char zero;
-};
+/* cold bood flag */
+static Boot_t boot_flag = COLD_BOOT;
 
 static const struct ip_cfg IP_Cfg_File_Default = {
 	.MAC_addr.mac_h = { "MAC_" },
@@ -119,14 +86,8 @@ static const struct ip_cfg IP_Cfg_File_Default = {
 		     "001" },
 	.GW.ip_p = { "00000" },
 	.GW.ip_nl = { "\n" },
-	.LogIP.ip_n = { "LIP_" },
-	.LogIP.ip_v = { "192168000000" },
-	.LogIP.ip_p = { "05000" },
-	.LogIP.ip_nl = { "\n" },
 	.zero = '\0',
 };
-
-static const char *Reb_Cause_File = "REB_C";
 
 /*
  * 1. Define reboot cause:
@@ -154,16 +115,23 @@ ErrorStatus AppStartUp(void)
 	InitComm();
 	xfunc_out = myxfunc_out_no_RTOS; /* diagnostic print */
 	/* set up periodic UART transmissions */
-	Transmit_to_UART = true;
+	Transmit_non_RTOS = true;
 
 	xputs("Starting up...\n");
 
 	Cold_Boot(); /* Cold_Boot always goes first */
 
+	boot_flag = HW_Boot_Select();
+
+	if (boot_flag == COLD_BOOT) {
+		xputs("Cold boot selected.\n");
+	}
+
 	/* check FRAM hardware */
 	InitFS();
 	FRESULT res = f_checkFS(&Media0);
-	if ((res == FR_NO_FILESYSTEM) || (res == FR_NO_FILE)) {
+	if ((res == FR_NO_FILESYSTEM) || (res == FR_NO_FILE) ||
+	    (boot_flag == COLD_BOOT)) {
 		/* we need to format media */
 		xputs(FRESULT_String(res));
 		xputs("\nNo filesystem! Formatting...\n");
@@ -179,7 +147,7 @@ ErrorStatus AppStartUp(void)
 		}
 		/* create ip config file */
 		res = SaveIPCfg(&Media0);
-		if (res != SUCCESS) {
+		if (res != FR_OK) {
 			xputs(FRESULT_String(res));
 			xputs(" SaveIPCfg() failed! Rebooting.\n");
 			NVIC_SystemReset();
@@ -200,17 +168,23 @@ ErrorStatus AppStartUp(void)
 	/* assume we have IP_CFG file */
 	if (Init_NIC(&Media0) != SUCCESS) {
 		/* reboot with defaults */
-		xputs("IP configuration error! Rebooting.\n");
+		xputs("IP configuration error!\n");
+		res = SaveIPCfg(&Media0);
+
+		xputs("Default IP configuration ");
+		if (res == FR_OK) {
+			xputs("saved.\n");
+		} else {
+			xputs("error!\n");
+		}
+		xputs("Rebooting\n");
+		NVIC_SystemReset();
 	};
 	/* ip configuration retrieved  */
 	xputs("IP configuration OK!\n");
 	lan_init();
+	retVal = SUCCESS;
 
-
-
-
-
-fExit:
 	return retVal;
 }
 
@@ -220,49 +194,6 @@ fExit:
 static inline void Cold_Boot(void)
 {
 	(void)(0);
-}
-
-/**
-  * @brief  Set_Reboot_Cause saves the reboot cause into NVMEM file
-  * @note
-  * @param  reboot cause
-  * @retval none
-  */
-void Set_Reboot_Cause(reb_cause_t c_arg)
-{
-	char *rc_str;
-	switch (c_arg) {
-	case RB_CMD: {
-		rc_str = "RB_CMD     ";
-		break;
-	}
-	case RB_CFG_ERR: {
-		rc_str = "RB_CFG_ERR ";
-		break;
-	}
-	case RB_CFG_CHNG: {
-		rc_str = "RB_CFG_CHNG";
-		break;
-	}
-	case RB_PWR_LOSS: {
-		rc_str = "RB_PWR_LOSS";
-		break;
-	}
-	case RB_NONE:
-	default: {
-		rc_str = "RB_NONE";
-		break;
-	}
-	}
-
-	FIL file;
-	file.media = &Media0;
-	if (NewFile(&file, Reb_Cause_File, 16U, FModeWrite) == FR_OK) {
-		if () {
-		}
-	}
-
-	return;
 }
 
 /**
@@ -302,23 +233,19 @@ static FRESULT SaveIPCfg(const Media_Desc_t *media)
 {
 	FRESULT retVal;
 	const size_t datalen = sizeof(IP_Cfg_File_Default);
-	fHandle_t file;
-	file.media = (Media_Desc_t *)media;
-	retVal = NewFile(&file, IP_Cfg_File, datalen, FModeWrite);
-	if (retVal != FR_OK) {
-		goto fExit;
+	size_t bw;
+
+	retVal = DeleteFile((Media_Desc_t *)media, IP_Cfg_File);
+	if ( (retVal == FR_OK) || (retVal == FR_NO_FILE) ) {
+		retVal = WriteBytes((Media_Desc_t *)media, IP_Cfg_File, 0U,
+				    datalen, &bw,
+				    (uint8_t *)&IP_Cfg_File_Default);
+
+		if (bw != datalen) {
+			retVal = FR_INVALID_PARAMETER;
+		}
 	}
-	UINT bw;
-	retVal = f_write(&file, &IP_Cfg_File_Default, datalen, &bw);
-	if (retVal != FR_OK) {
-		goto fExit;
-	}
-	if (bw != datalen) {
-		retVal = FR_INVALID_OBJECT;
-		goto fExit;
-	}
-	retVal = f_close(&file);
-fExit:
+
 	return retVal;
 }
 
@@ -331,24 +258,15 @@ static ErrorStatus Init_NIC(const Media_Desc_t *media)
 {
 	ErrorStatus retVal = ERROR;
 	FRESULT res;
-	fHandle_t file;
-
 	struct ip_cfg buf;
+	size_t br = 0U;
 
-	file.media = (Media_Desc_t *)media;
-	res = f_open(&file, IP_Cfg_File, FModeRead);
-	if (res != FR_OK) {
-		goto fExit;
-	}
-	UINT br = 0U;
-	res = f_read(&file, &buf, sizeof(struct ip_cfg), &br);
+	res = ReadBytes((Media_Desc_t *)media, IP_Cfg_File, 0U,
+			sizeof(struct ip_cfg), &br, (uint8_t *)&buf);
 	if ((res != FR_OK) || (br != sizeof(struct ip_cfg))) {
 		goto fExit;
 	}
-	res = f_close(&file);
-	if (res != FR_OK) {
-		goto fExit;
-	}
+
 	if (memcmp(buf.MAC_addr.mac_h, IP_Cfg_File_Default.MAC_addr.mac_h,
 		   4U) != 0) {
 		goto fExit;
@@ -377,10 +295,10 @@ static ErrorStatus Init_NIC(const Media_Desc_t *media)
 		uint8_t ip2;
 		uint8_t ip3;
 
-		ip3 = adec2byte(&buf.Own_IP.ip_v, 3U);
-		ip2 = adec2byte(&buf.Own_IP.ip_v[3], 3U);
-		ip1 = adec2byte(&buf.Own_IP.ip_v[6], 3U);
-		ip0 = adec2byte(&buf.Own_IP.ip_v[9], 3U);
+		ip0 = adec2byte(&buf.Own_IP.ip_v, 3U);
+		ip1 = adec2byte(&buf.Own_IP.ip_v[3], 3U);
+		ip2 = adec2byte(&buf.Own_IP.ip_v[6], 3U);
+		ip3 = adec2byte(&buf.Own_IP.ip_v[9], 3U);
 		ip_addr = MAKE_IP(ip0, ip1, ip2, ip3);
 	}
 	/* GW */
@@ -396,14 +314,15 @@ static ErrorStatus Init_NIC(const Media_Desc_t *media)
 		uint8_t ip2;
 		uint8_t ip3;
 
-		ip3 = adec2byte(&buf.GW.ip_v, 3U);
-		ip2 = adec2byte(&buf.GW.ip_v[3], 3U);
-		ip1 = adec2byte(&buf.GW.ip_v[6], 3U);
-		ip0 = adec2byte(&buf.GW.ip_v[9], 3U);
+		ip0 = adec2byte(&buf.GW.ip_v, 3U);
+		ip1 = adec2byte(&buf.GW.ip_v[3], 3U);
+		ip2 = adec2byte(&buf.GW.ip_v[6], 3U);
+		ip3 = adec2byte(&buf.GW.ip_v[9], 3U);
 		ip_gateway = MAKE_IP(ip0, ip1, ip2, ip3);
 	}
 	/* NM */
-	if (memcmp(buf.Net_Mask.ip_n, IP_Cfg_File_Default.Net_Mask.ip_n, 4U) != 0) {
+	if (memcmp(buf.Net_Mask.ip_n, IP_Cfg_File_Default.Net_Mask.ip_n, 4U) !=
+	    0) {
 		goto fExit;
 	}
 	if (isDec(&buf.Net_Mask.ip_v, IP_LEN) == false) {
@@ -415,10 +334,10 @@ static ErrorStatus Init_NIC(const Media_Desc_t *media)
 		uint8_t ip2;
 		uint8_t ip3;
 
-		ip3 = adec2byte(&buf.Net_Mask.ip_v, 3U);
-		ip2 = adec2byte(&buf.Net_Mask.ip_v[3], 3U);
-		ip1 = adec2byte(&buf.Net_Mask.ip_v[6], 3U);
-		ip0 = adec2byte(&buf.Net_Mask.ip_v[9], 3U);
+		ip0 = adec2byte(&buf.Net_Mask.ip_v, 3U);
+		ip1 = adec2byte(&buf.Net_Mask.ip_v[3], 3U);
+		ip2 = adec2byte(&buf.Net_Mask.ip_v[6], 3U);
+		ip3 = adec2byte(&buf.Net_Mask.ip_v[9], 3U);
 		ip_mask = MAKE_IP(ip0, ip1, ip2, ip3);
 	}
 	retVal = SUCCESS;

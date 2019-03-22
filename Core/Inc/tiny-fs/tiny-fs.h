@@ -218,7 +218,7 @@ typedef FAT_Begin_t *FAT_Begin_p;
 #ifdef DEBUG
 #if !defined(STM32F303xC) && !defined(STM32F103xB)
 
-uint32_t findEntry(const Media_Desc_p media, const DIR_Entry_p entry);
+uint32_t findEntry(const Media_Desc_t * const media, const DIR_Entry_p entry);
 
 uint8_t getBitMask(uint8_t n);
 
@@ -226,21 +226,20 @@ uint32_t allocateClusters(uint8_t *clusterTable,
 				       size_t clusterTableSize,
 				       size_t requestedSize);
 
-
-size_t getNumClusters(const Media_Desc_p media);
+size_t getNumClusters(const Media_Desc_t * const media);
 
 size_t getClusterFileSize(size_t clusterTableSize);
 
-size_t getClusterTableSize(const Media_Desc_p media);
+size_t findMaxFreeBlock(const Media_Desc_t * media);
 
-size_t findMaxFreeBlock(const Media_Desc_p media);
+size_t getClusterTableSize(const Media_Desc_t * const media);
 
 #endif
 #endif
 
 void InitFS(void);
 
-ErrorStatus Format(const Media_Desc_t * media);
+ErrorStatus Format(const Media_Desc_t * const media);
 
 FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode);
 

@@ -2,13 +2,23 @@
 
 set(GROUP_CORE_SRC_APP
 	        Core/Src/app/startup.c
+		Core/Src/app/manchester_task.c
+		Core/Src/app/lan_poll_task.c
+		Core/Src/app/logger_task.c
+		Core/Src/app/service_task.c
+		Core/Src/app/publish_task.c
+		Core/Src/app/subscribe_task.c
 )
 
 set(GROUP_CORE_SRC_HELPERS
-	        Core/Src/helpers/conf_fn.c
-		Core/Src/helpers/my_comm.c
+	        Core/Src/helpers/my_comm.c
 		Core/Src/helpers/xprintf.c
 		Core/Src/helpers/ascii_helpers.c
+		Core/Src/helpers/watchdog.c
+		Core/Src/helpers/file_io.c
+		Core/Src/helpers/rtc_helpers.c
+		Core/Src/helpers/ip_helpers.c
+		Core/Src/helpers/CRC32_helpers.c
 )
 
 set(GROUP_CORE_SRC_LAN
@@ -70,6 +80,7 @@ set(GROUP_CORE_SRC
 		Core/Src/system_stm32f1xx.c
 		Core/Src/tim.c
 		Core/Src/usart.c
+		Core/Src/syscalls.c
 )
 
 set(GROUP_DRIVERS_STM32F1XX_HAL_DRIVER_SRC

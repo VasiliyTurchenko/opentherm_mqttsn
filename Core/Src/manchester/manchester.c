@@ -71,10 +71,10 @@ typedef struct TimerCfg {
 
 /* static functions */
 
-ErrorStatus transmitBit(uint32_t timeoutMS, uint8_t bit);
-ErrorStatus transmitStartStopBits(uint32_t timeoutMS, uint8_t val, size_t num);
+static ErrorStatus transmitBit(uint32_t timeoutMS, uint8_t bit);
+static ErrorStatus transmitStartStopBits(uint32_t timeoutMS, uint8_t val, size_t num);
 
-void configTimer(TIM_HandleTypeDef *htim, size_t stage);
+static void configTimer(TIM_HandleTypeDef *htim, size_t stage);
 
 ErrorStatus processPulse(PulseData_t *const p,
 			 MANCHESTER_Context_t *const context,
@@ -95,7 +95,7 @@ extern osMutexId ManchesterTimer01MutexHandle;
 //extern uint32_t measured1;
 extern TaskHandle_t ManchTaskHandle;
 
-PulseData_t pulses;
+static PulseData_t pulses;
 
 /* pointer to the high 16 bit counter value - incremented every UIE interrupt */
 uint16_t highCntValue;
@@ -764,7 +764,7 @@ fExit:
  * @param htim
  * @param stage index of the config. params.table
  */
-void configTimer(TIM_HandleTypeDef *htim, size_t stage)
+static void configTimer(TIM_HandleTypeDef *htim, size_t stage)
 {
 	if (timerCfgData[stage].state == HAL_TIM_STATE_RESET) {
 		//		HAL_TIM_Base_MspDeInit(htim);
@@ -941,7 +941,7 @@ fExit:
  * @param num number of repetitions
  * @return
  */
-ErrorStatus transmitStartStopBits(uint32_t timeoutMS, uint8_t val, size_t num)
+static ErrorStatus transmitStartStopBits(uint32_t timeoutMS, uint8_t val, size_t num)
 {
 	ErrorStatus retVal = SUCCESS;
 	while ((num > 0u) && (retVal == SUCCESS)) {
@@ -958,7 +958,7 @@ ErrorStatus transmitStartStopBits(uint32_t timeoutMS, uint8_t val, size_t num)
  * @param val
  * @return
  */
-ErrorStatus transmitBit(uint32_t timeoutMS, uint8_t val)
+static ErrorStatus transmitBit(uint32_t timeoutMS, uint8_t val)
 {
 	ErrorStatus retVal = SUCCESS;
 
@@ -1000,3 +1000,57 @@ ErrorStatus transmitBit(uint32_t timeoutMS, uint8_t val)
 fExit:
 	return retVal;
 }
+
+
+/**
+ * @brief MANCHESTER_TimerISR interrupt handler
+ */
+void MANCHESTER_TimerISR(void)
+{
+	STROBE_1;
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+	uint32_t notification = UINT32_MAX;
+	/* TIM Trigger detection event */
+	if (__HAL_TIM_GET_FLAG(&MANCHESTER_Timer, TIM_FLAG_TRIGGER) != RESET) {
+		if (__HAL_TIM_GET_IT_SOURCE(&MANCHESTER_Timer, TIM_IT_TRIGGER) != RESET) {
+			__HAL_TIM_CLEAR_FLAG(&MANCHESTER_Timer, TIM_FLAG_TRIGGER);
+//			MANCHESTER_DebugLEDToggle();
+			notification = xTaskGetTickCountFromISR();
+			goto fExit;
+		}
+	}
+
+	/* input capture event */
+	if (__HAL_TIM_GET_FLAG(&MANCHESTER_Timer, TIM_FLAG_CC1) != RESET) {
+		if (__HAL_TIM_GET_IT_SOURCE(&MANCHESTER_Timer, TIM_IT_CC1) != RESET) {
+			__HAL_TIM_CLEAR_FLAG(&MANCHESTER_Timer, TIM_FLAG_CC1);
+			if ((MANCHESTER_Timer.Instance->CCMR1 & TIM_CCMR1_CC1S) != 0x00U) {
+//				MANCHESTER_DebugLEDToggle();
+				notification = HAL_TIM_ReadCapturedValue(&MANCHESTER_Timer, TIM_CHANNEL_1);
+				goto fExit;
+			}
+		}
+	}
+
+	/* update event */
+	if (__HAL_TIM_GET_FLAG(&MANCHESTER_Timer, TIM_FLAG_UPDATE) != RESET) {
+		if (__HAL_TIM_GET_IT_SOURCE(&MANCHESTER_Timer, TIM_IT_UPDATE) != RESET) {
+			__HAL_TIM_CLEAR_FLAG(&MANCHESTER_Timer, TIM_FLAG_UPDATE);
+//			MANCHESTER_DebugLEDToggle();
+			notification = 1u;
+			goto fExit;
+		}
+	}
+
+  HAL_TIM_IRQHandler(&MANCHESTER_Timer);
+
+	return;
+fExit:
+	xTaskNotifyFromISR(ManchTaskHandle, notification,
+			eSetValueWithOverwrite,
+			  &xHigherPriorityTaskWoken);
+			portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+	STROBE_0;
+	return;
+}
+

@@ -10,7 +10,7 @@
 #include "task.h"
 #include "cmsis_os.h"
 
-#include <stdio.h>
+//#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -22,6 +22,10 @@
 #include "tftp_server.h"
 //#include "conf_fn.h"
 #include "crc.h"
+
+#include "tiny-fs.h"
+#include "ip_helpers.h"
+
 #include "mystrcpy.h"
 #include "TFTP_ser_deser.h"
 

@@ -7,7 +7,7 @@
   ******************************************************************************
   * @attention use at your own risk
   ******************************************************************************
-  */ 
+  */
 
 /* TFTP section */
 
@@ -35,7 +35,7 @@
 
 /* NTP section */
 
-#define _NTP_DEBUG_PRINT
+#define NTP_DEBUG_PRINT
 
 /* JSON section */
 

@@ -11,7 +11,6 @@
 
 #include "lan.h"
 #include "xprintf.h"
-#include "conf_fn.h"
 
 #define NET_BUF_STAT
 

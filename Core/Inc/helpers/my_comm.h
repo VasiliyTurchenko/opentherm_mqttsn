@@ -13,7 +13,7 @@
 #include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
+//#include <stdio.h>
 
 #ifdef STM32F303xC
 #include "stm32f3xx.h"
@@ -81,6 +81,8 @@ ErrorStatus Transmit(const void *ptr);
 void myxfunc_out(unsigned char c);
 void myxfunc_out_no_RTOS(unsigned char c);
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart);
 
 #endif
 /* ############################### end of the file ########################## */

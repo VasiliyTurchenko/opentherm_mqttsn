@@ -245,6 +245,7 @@ ErrorStatus Quick_FRAM_Test(void)
 		if (retVal == ERROR) {
 			break;
 		}
+		i++;
 	}
 	return retVal;
 }

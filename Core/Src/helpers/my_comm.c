@@ -218,4 +218,14 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 }
 /* end of HAL_UART_TxCpltCallback() */
 
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+	static uint32_t ec = 0U;
+	ec = huart->ErrorCode;
+
+	UNUSED(ec);
+}
+
+
 /* ############################### end of file ############################### */

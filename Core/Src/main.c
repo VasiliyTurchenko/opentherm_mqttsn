@@ -67,6 +67,8 @@
 
 #include "startup.h"
 #include "my_comm.h"
+#include "xprintf.h"
+#include "watchdog.h"
 
 /* USER CODE END Includes */
 
@@ -110,6 +112,11 @@ void MX_FREERTOS_Init(void);
 int main(void)
 {
 	/* USER CODE BEGIN 1 */
+/* fill the stack */
+
+	for (size_t i = 0x200035dCU; i < 0x20003ad4U; i = i+4U) {
+		*(uint32_t*)i = 0xCAFEC001U;
+	}
 
 	/* USER CODE END 1 */
 
@@ -142,15 +149,21 @@ int main(void)
 	MX_RTC_Init();
 	MX_ADC1_Init();
 	MX_USART3_UART_Init();
-	MX_IWDG_Init();
+//	MX_IWDG_Init();
 	MX_CRC_Init();
 	MX_TIM4_Init();
 	/* USER CODE BEGIN 2 */
 
+
 	if (AppStartUp() == ERROR) {
 		/* process error */
+		xputs("AppStartUp returned error!\n");
 	};
+	MX_IWDG_Init();
+	xputs("Indep. watchdog initialized.\n");
+	xputs("Starting RTOS...\n");
 
+	Transmit_non_RTOS = false;
 	/* USER CODE END 2 */
 
 	/* Call init function for freertos objects (in freertos.c) */
@@ -242,7 +255,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 	}
 	/* USER CODE BEGIN Callback 1 */
 	if (htim->Instance == TIM1) {
-		if (Transmit_to_UART) {
+		if (Transmit_non_RTOS) {
 			/* every millisecond */
 			if (TransmitFuncRunning == false) {
 				Transmit(NULL);

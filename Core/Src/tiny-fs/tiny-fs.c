@@ -11,23 +11,35 @@
 #include "task.h"
 #include "cmsis_os.h"
 
+#include "mutex_helpers.h"
+
 #include <stddef.h>
-#include <stdio.h>
+//#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <limits.h>
 
-
 #include "tiny-fs.h"
+#include "crc32_helpers.h"
 
 #define SILENT
 
 #if defined(osCMSIS)
 
-#define TINY_FS_LOCK do { if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {taskENTER_CRITICAL();} } while (0)
-#define TINY_FS_UNLOCK do { if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {taskEXIT_CRITICAL();} } while (0)
+#define TINY_FS_LOCK                                                           \
+	do {                                                                   \
+		if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {   \
+			taskENTER_CRITICAL();                                  \
+		}                                                              \
+	} while (0)
+#define TINY_FS_UNLOCK                                                         \
+	do {                                                                   \
+		if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {   \
+			taskEXIT_CRITICAL();                                   \
+		}                                                              \
+	} while (0)
 
 #else
 
@@ -36,44 +48,51 @@
 
 #endif
 
-#if defined(STM32F103xB)
-
-#include "stm32f1xx_hal_crc.h"
-
-#define CRC32
-
-#elif defined ()
-
-#define CRC32
+#ifndef MCU_TARGET
 
 #endif
 
-NDEBUG_STATIC uint8_t getBitMask(uint8_t n);
+#if defined(STM32F103xB)
+
+#define CRC32(BUF,SIZ,INI) CRC32_helper((BUF),(SIZ),(INI))
+
+#elif defined(STM32F303xC)
+
+#define CRC32(BUF,SIZ,INI) CRC32_helper((BUF),(SIZ),(INI))
+
+#endif
+
 NDEBUG_STATIC size_t getClusterTableOffset(void);
-NDEBUG_STATIC size_t checkFATCRC32(uint32_t crc);
-NDEBUG_STATIC uint32_t RenewDirCRC32(const Media_Desc_p media);
+
+NDEBUG_STATIC uint32_t RenewDirCRC32(const Media_Desc_t * const media);
 static size_t inline cluster2Addr(uint32_t cluster);
 static size_t inline addr2Cluster(uint32_t addr);
-static ErrorStatus inline toggleClusters(uint8_t *clusterTable, size_t by, size_t bi,
-					 size_t reqClusters);
-NDEBUG_STATIC size_t FindFreeSlot(const Media_Desc_p media);
+static ErrorStatus inline toggleClusters(uint8_t *clusterTable, size_t by,
+					 size_t bi, size_t reqClusters);
+NDEBUG_STATIC size_t FindFreeSlot(const Media_Desc_t* const media);
 NDEBUG_STATIC size_t SaveDirEntry(const Media_Desc_p media, size_t entryIndex,
 				  const DIR_Entry_p entry);
 
 NDEBUG_STATIC void decodeFName(const char *name[MAX_FILENAME_LEN], char *sname);
 NDEBUG_STATIC void encodeFName(char *name[MAX_FILENAME_LEN], const char *sname);
 NDEBUG_STATIC size_t getDIR_EntryOffset(size_t fileIndex);
-NDEBUG_STATIC ErrorStatus freeClusters(uint8_t *clusterTable, const size_t clusterTableSize,
-				       const size_t fileAddress, const size_t fileSize);
-NDEBUG_STATIC ErrorStatus readFAT(const Media_Desc_p media, uint8_t *buf);
+NDEBUG_STATIC ErrorStatus freeClusters(uint8_t *clusterTable,
+				       const size_t clusterTableSize,
+				       const size_t fileAddress,
+				       const size_t fileSize);
+
+NDEBUG_STATIC ErrorStatus readFAT(const Media_Desc_t * const media, uint8_t *buf);
+
 NDEBUG_STATIC ErrorStatus writeFAT(const Media_Desc_p media, uint8_t *buf);
 
 NDEBUG_STATIC FRESULT isFileValid(FIL *fp);
 NDEBUG_STATIC bool isPtrValid(const void *p);
-NDEBUG_STATIC bool isMediaValid(const Media_Desc_p media);
-NDEBUG_STATIC uint32_t allocateClusters(uint8_t *clusterTable, size_t clusterTableSize,
+NDEBUG_STATIC bool isMediaValid(const Media_Desc_t *media);
+NDEBUG_STATIC uint32_t allocateClusters(uint8_t *clusterTable,
+					size_t clusterTableSize,
 					size_t requestedSize);
-NDEBUG_STATIC uint32_t findEntry(const Media_Desc_p media, const DIR_Entry_p entry);
+NDEBUG_STATIC uint32_t findEntry(const Media_Desc_t * const media,
+				 const DIR_Entry_p entry);
 
 static uint8_t DTA[FS_DTA_SIZE]; /* data trahsfer area for driver's needs */
 
@@ -81,6 +100,9 @@ static uint8_t DTA[FS_DTA_SIZE]; /* data trahsfer area for driver's needs */
 
 /* mutexes */
 static uint32_t mutexes[FS_CONCURRENT_FILES];
+
+extern osMutexId FS_Mutex01Handle;
+extern osMutexId CRC_MutexHandle;
 
 /**
  * @brief getClusterTableOffset
@@ -96,9 +118,10 @@ NDEBUG_STATIC size_t getClusterTableOffset()
  * @param mediaSize size in bytes
  * @return number of clusters
  */
-NDEBUG_STATIC size_t getNumClusters(const Media_Desc_p media)
+NDEBUG_STATIC size_t getNumClusters(const Media_Desc_t * const media)
 {
-	size_t tot_clu = (media->MediaSize - getClusterTableOffset()) / FS_CLUSTER_SIZE;
+	size_t tot_clu =
+		(media->MediaSize - getClusterTableOffset()) / FS_CLUSTER_SIZE;
 	return (tot_clu - (tot_clu % CHAR_BIT));
 }
 
@@ -122,7 +145,7 @@ size_t getClusterFileSize(size_t clusterTableSize)
  * @param media
  * @return size
  */
-NDEBUG_STATIC size_t getClusterTableSize(const Media_Desc_p media)
+NDEBUG_STATIC size_t getClusterTableSize(const Media_Desc_t * const media)
 {
 	size_t numClusters = getNumClusters(media);
 	uint8_t add = ((numClusters % CHAR_BIT) != 0) ? 1U : 0U;
@@ -145,9 +168,12 @@ void InitFS(void)
  * @param media
  * @return
  */
-ErrorStatus Format(const Media_Desc_t * media)
+ErrorStatus Format(const Media_Desc_t * const media)
 {
 	ErrorStatus retVal = ERROR;
+
+	/* take mutex */
+	TAKE_MUTEX(FS_Mutex01Handle);
 
 	if (isMediaValid(media) == false) {
 		goto fExit;
@@ -156,7 +182,7 @@ ErrorStatus Format(const Media_Desc_t * media)
 	retVal = SUCCESS;
 #ifdef DEBUG
 #ifndef SILENT
-	printf("Format. Reserved area size = %d bytes \n", RESERVED_AREA);
+	xprintf("Format. Reserved area size = %d bytes \n", RESERVED_AREA);
 #endif
 #endif
 	FAT_Begin_p f_begin = (FAT_Begin_p)DTA;
@@ -172,10 +198,12 @@ ErrorStatus Format(const Media_Desc_t * media)
 		size_t mediaAddr = getDIR_EntryOffset(i);
 #ifdef DEBUG
 #ifndef SILENT
-		printf("Format. Writing %d bytes to address %d\n", sizeof(DIR_Entry_t), mediaAddr);
+		xprintf("Format. Writing %d bytes to address %d\n",
+		       sizeof(DIR_Entry_t), mediaAddr);
 #endif
 #endif
-		retVal = media->writeFunc((uint8_t *)p, mediaAddr, sizeof(DIR_Entry_t));
+		retVal = media->writeFunc((uint8_t *)p, mediaAddr,
+					  sizeof(DIR_Entry_t));
 		if (retVal != SUCCESS) {
 			break;
 		}
@@ -188,7 +216,7 @@ ErrorStatus Format(const Media_Desc_t * media)
 #ifdef DEBUG
 #ifndef SILENT
 	const size_t numClusters = getNumClusters(media);
-	printf("Format. Number of clusters = %d; cluster size = %d bytes; clusterTableSize =  %d bytes\n",
+	xprintf("Format. Number of clusters = %d; cluster size = %d bytes; clusterTableSize =  %d bytes\n",
 	       numClusters, FS_CLUSTER_SIZE, clusterTableSize);
 #endif
 #endif
@@ -199,7 +227,8 @@ ErrorStatus Format(const Media_Desc_t * media)
 	p->FileStatus = FStateFAT;
 	p->FileAddress = getClusterTableOffset();
 	/* write DIR entry of the "FATFAT" file */
-	retVal = media->writeFunc((uint8_t *)p, offsetof(FAT_Begin_t, entry0), sizeof(DIR_Entry_t));
+	retVal = media->writeFunc((uint8_t *)p, offsetof(FAT_Begin_t, entry0),
+				  sizeof(DIR_Entry_t));
 	if (retVal != SUCCESS) {
 		goto fExit;
 	}
@@ -208,33 +237,56 @@ ErrorStatus Format(const Media_Desc_t * media)
 
 #ifdef DEBUG
 #ifndef SILENT
-	printf("Format. clusterFileSize = %d\n", clusterFileSize);
+	xprintf("Format. clusterFileSize = %d\n", clusterFileSize);
 #endif
 #endif
 	/** @todo Add check DTA size against clusterFileSize */
 
 	if (clusterTableSize > FS_DTA_SIZE) {
-		printf("panic at line %d", __LINE__);
+#ifdef DEBUG
+#ifndef SILENT
+		xprintf("panic at line %d", __LINE__);
+#endif
+#endif
+
+#ifndef MCU_TARGET
 		exit(-1);
+#else
+		clusterTableSize > FS_DTA_SIZE;
+#endif
 	}
 
 	memset(DTA, 0, clusterTableSize); /* clear table of clusters */
 	/* allocate clusters and mark them as busy in the cluster table */
-	size_t FATFileOffset = allocateClusters(DTA, clusterTableSize, clusterFileSize);
+	size_t FATFileOffset =
+		allocateClusters(DTA, clusterTableSize, clusterFileSize);
 	if (FATFileOffset != 0U) {
+#ifdef DEBUG
+#ifndef SILENT
 		printf("panic at line %d", __LINE__);
+#endif
+#endif
+
+#ifndef MCU_TARGET
 		exit(-1);
+#else
+	FATFileOffset = 0U;
+#endif
+
 	}
 	/* save cluster table */
-	retVal = media->writeFunc(DTA, getClusterTableOffset(), clusterTableSize);
+	retVal = media->writeFunc(DTA, getClusterTableOffset(),
+				  clusterTableSize);
 	if (retVal != SUCCESS) {
 		goto fExit;
 	}
-
+	TAKE_MUTEX(CRC_MutexHandle);
 	uint32_t cTable_CRC = CRC32(DTA, clusterTableSize, 0x00U);
+	GIVE_MUTEX(CRC_MutexHandle);
 	size_t CRCOffset = offsetof(FAT_Begin_t, entry0);
 	CRCOffset += offsetof(DIR_Entry_t, FileCRC32);
-	retVal = media->writeFunc((uint8_t *)&cTable_CRC, CRCOffset, sizeof(uint32_t));
+	retVal = media->writeFunc((uint8_t *)&cTable_CRC, CRCOffset,
+				  sizeof(uint32_t));
 	if (retVal != SUCCESS) {
 		goto fExit;
 	}
@@ -246,7 +298,8 @@ ErrorStatus Format(const Media_Desc_t * media)
 
 #ifdef DEBUG
 #ifndef SILENT
-	printf("Format. Witing %d bytes to address %d\n", sizeof(FAT_Header_t), 0U);
+	xprintf("Format. Witing %d bytes to address %d\n", sizeof(FAT_Header_t),
+	       0U);
 #endif
 #endif
 	retVal = media->writeFunc((uint8_t *)f_begin, 0U, sizeof(FAT_Header_t));
@@ -258,11 +311,12 @@ ErrorStatus Format(const Media_Desc_t * media)
 
 #ifdef DEBUG
 #ifndef SILENT
-	printf("Format. DIR_CRC32:%08x\n", f_begin->h.DIR_CRC32);
+	xprintf("Format. DIR_CRC32:%08x\n", f_begin->h.DIR_CRC32);
 #endif
 #endif
 
 fExit:
+	GIVE_MUTEX(FS_Mutex01Handle);
 	return retVal;
 }
 
@@ -291,6 +345,8 @@ FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode)
 {
 	FRESULT retVal = FR_INVALID_PARAMETER;
 
+	TAKE_MUTEX(FS_Mutex01Handle);
+
 	if ((file == NULL) || (file->media == NULL) || (name == NULL) ||
 	    ((mode != FModeRead) && (mode != FModeWrite))) {
 		return retVal;
@@ -313,14 +369,16 @@ FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode)
 	}
 	DIR_Entry_t tmp_entry;
 	/* read the cluster file */
-	if (file->media->readFunc((uint8_t *)&tmp_entry, offsetof(FAT_Begin_t, entry0),
+	if (file->media->readFunc((uint8_t *)&tmp_entry,
+				  offsetof(FAT_Begin_t, entry0),
 				  sizeof(DIR_Entry_t)) == ERROR) {
 		/* read error */
 		retVal = FR_DISK_ERR;
 		goto fExit;
 	}
 
-	if (file->media->readFunc(DTA, tmp_entry.FileAddress, tmp_entry.FileSize) == ERROR) {
+	if (file->media->readFunc(DTA, tmp_entry.FileAddress,
+				  tmp_entry.FileSize) == ERROR) {
 		/* read error */
 		retVal = FR_DISK_ERR;
 		goto fExit;
@@ -331,6 +389,7 @@ FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode)
 
 	size_t entry_index; /* index of found FAT entry */
 	strncpy((char *)&file->fileDir.FileName, name, MAX_FILENAME_LEN);
+	file->fileDir.FileName[MAX_FILENAME_LEN] = '\0';
 
 	file->fileDir.FileSize = (uint16_t)size;
 
@@ -351,8 +410,9 @@ FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode)
 		}
 		/*2. reserve clusters */
 		// TODO BUG HERE!
-		file->fileDir.FileAddress = allocateClusters(DTA, getClusterTableSize(file->media),
-							     file->fileDir.FileSize);
+		file->fileDir.FileAddress =
+			allocateClusters(DTA, getClusterTableSize(file->media),
+					 file->fileDir.FileSize);
 		/*
 * @return 0 if no space needs to be allocated; UINT32_MAX in case of no room or error;
 * @return start address of the media to write data
@@ -365,8 +425,9 @@ FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode)
 
 		/* Update FAT */
 
-		if (file->media->writeFunc((uint8_t *)&DTA, getClusterTableOffset(),
-					   getClusterTableSize(file->media)) == ERROR) {
+		if (file->media->writeFunc(
+			    (uint8_t *)&DTA, getClusterTableOffset(),
+			    getClusterTableSize(file->media)) == ERROR) {
 			/* I/O error */
 			retVal = FR_DISK_ERR;
 			goto fExit;
@@ -392,7 +453,8 @@ FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode)
 	} else {
 		/* open existing */
 		size_t dirEntryOffset = getDIR_EntryOffset(entry_index);
-		if (file->media->readFunc((uint8_t *)&file->fileDir, dirEntryOffset,
+		if (file->media->readFunc((uint8_t *)&file->fileDir,
+					  dirEntryOffset,
 					  sizeof(DIR_Entry_t)) != SUCCESS) {
 			retVal = FR_DISK_ERR;
 			goto fExit;
@@ -415,7 +477,8 @@ FRESULT NewFile(fHandle_p file, const char *name, size_t size, fMode_t mode)
 		retVal = FR_OK;
 */
 	}
-	if (SaveDirEntry(file->media, entry_index, &file->fileDir) != entry_index) {
+	if (SaveDirEntry(file->media, entry_index, &file->fileDir) !=
+	    entry_index) {
 		retVal = FR_DISK_ERR;
 	} else {
 		retVal = FR_OK;
@@ -427,6 +490,9 @@ fExit:
 	} else {
 		file->pmutex = &mutexes[i];
 	}
+
+	GIVE_MUTEX(FS_Mutex01Handle);
+
 	return retVal;
 }
 
@@ -447,6 +513,8 @@ FRESULT f_close(FIL *fp)
  */
 FRESULT CloseFile(fHandle_p file)
 {
+	TAKE_MUTEX(FS_Mutex01Handle);
+
 	FRESULT retVal;
 	retVal = isFileValid(file);
 	if (retVal != FR_OK) {
@@ -468,7 +536,8 @@ FRESULT CloseFile(fHandle_p file)
 
 	DIR_Entry_t tmp_entry;
 	size_t mediaAddr = getDIR_EntryOffset(fileIndex);
-	if (file->media->readFunc((uint8_t *)&tmp_entry, mediaAddr, sizeof(DIR_Entry_t)) == ERROR) {
+	if (file->media->readFunc((uint8_t *)&tmp_entry, mediaAddr,
+				  sizeof(DIR_Entry_t)) == ERROR) {
 		retVal = FR_DISK_ERR;
 		goto fExit;
 	}
@@ -478,7 +547,8 @@ FRESULT CloseFile(fHandle_p file)
 	}
 
 	file->fileDir.FileStatus = FStateClosed;
-	if (SaveDirEntry(file->media, fileIndex, &file->fileDir) == UINT32_MAX) {
+	if (SaveDirEntry(file->media, fileIndex, &file->fileDir) ==
+	    UINT32_MAX) {
 		retVal = FR_DISK_ERR;
 		goto fExit;
 	}
@@ -490,6 +560,7 @@ FRESULT CloseFile(fHandle_p file)
 	/* unlock */
 
 fExit:
+	GIVE_MUTEX(FS_Mutex01Handle);
 	return retVal;
 }
 
@@ -525,6 +596,8 @@ FRESULT f_unlink(const TCHAR *path)
  */
 FRESULT DeleteFile(const Media_Desc_p media, const char *name)
 {
+	TAKE_MUTEX(FS_Mutex01Handle);
+
 	FRESULT retVal;
 	retVal = FR_INVALID_PARAMETER;
 
@@ -539,27 +612,31 @@ FRESULT DeleteFile(const Media_Desc_p media, const char *name)
 	static DIR_Entry_t tmp_entry;
 	size_t entry_index; /* index of found FAT entry */
 	strncpy((char *)&tmp_entry.FileName, name, MAX_FILENAME_LEN);
+	tmp_entry.FileName[MAX_FILENAME_LEN] = '\0';
 	entry_index = findEntry(media, &tmp_entry);
 	if ((entry_index == UINT32_MAX) || (entry_index == 0U)) {
 		retVal = FR_NO_FILE;
 		goto fExit;
 	}
 	size_t mediaAddr = getDIR_EntryOffset(entry_index);
-	if (media->readFunc((uint8_t *)&tmp_entry, mediaAddr, sizeof(DIR_Entry_t)) == ERROR) {
+	if (media->readFunc((uint8_t *)&tmp_entry, mediaAddr,
+			    sizeof(DIR_Entry_t)) == ERROR) {
 		retVal = FR_DISK_ERR;
 		goto fExit;
 	}
+#if(0)
 	if (tmp_entry.FileStatus != FStateClosed) {
 		retVal = FR_LOCKED;
 		goto fExit;
 	}
+#endif
 	/* free clusters */
 	if (readFAT(media, (uint8_t *)&DTA) == ERROR) {
 		retVal = FR_DISK_ERR;
 		goto fExit;
 	}
-	if (freeClusters((uint8_t *)&DTA, getClusterTableSize(media), tmp_entry.FileAddress,
-			 tmp_entry.FileSize) == ERROR) {
+	if (freeClusters((uint8_t *)&DTA, getClusterTableSize(media),
+			 tmp_entry.FileAddress, tmp_entry.FileSize) == ERROR) {
 		retVal = FR_DISK_ERR;
 		goto fExit;
 	}
@@ -576,6 +653,8 @@ FRESULT DeleteFile(const Media_Desc_p media, const char *name)
 		retVal = FR_OK;
 	}
 fExit:
+	GIVE_MUTEX(FS_Mutex01Handle);
+
 	return retVal;
 }
 
@@ -587,8 +666,10 @@ fExit:
  * @param fileSize size of the file being deleted
  * @return ERROR or SUCCESS
  */
-NDEBUG_STATIC ErrorStatus freeClusters(uint8_t *clusterTable, const size_t clusterTableSize,
-				       const size_t fileAddress, const size_t fileSize)
+NDEBUG_STATIC ErrorStatus freeClusters(uint8_t *clusterTable,
+				       const size_t clusterTableSize,
+				       const size_t fileAddress,
+				       const size_t fileSize)
 {
 	ErrorStatus retVal;
 	retVal = SUCCESS;
@@ -607,7 +688,8 @@ NDEBUG_STATIC ErrorStatus freeClusters(uint8_t *clusterTable, const size_t clust
 			retVal = ERROR;
 			goto fExit;
 		}
-		uint32_t cl = addr2Cluster(fileAddress - getClusterTableOffset());
+		uint32_t cl =
+			addr2Cluster(fileAddress - getClusterTableOffset());
 		uint32_t by = cl / CHAR_BIT;
 		uint32_t bi = cl % CHAR_BIT;
 
@@ -623,7 +705,8 @@ fExit:
  * @param entry
  * @return index of found file in the table; 0 if no file; UINT32_MAX in case of error
  */
-NDEBUG_STATIC uint32_t findEntry(const Media_Desc_p media, const DIR_Entry_p entry)
+NDEBUG_STATIC uint32_t findEntry(const Media_Desc_t* const media,
+				 const DIR_Entry_p entry)
 {
 	uint32_t retVal = 0U;
 	ErrorStatus mediaError = SUCCESS;
@@ -636,7 +719,8 @@ NDEBUG_STATIC uint32_t findEntry(const Media_Desc_p media, const DIR_Entry_p ent
 #ifdef DEBUG
 		//	printf("findEntry: read address %d\n", mediaAddr);
 #endif
-		mediaError = media->readFunc((uint8_t *)tmpFName, mediaAddr, sizeof(tmpFName));
+		mediaError = media->readFunc((uint8_t *)tmpFName, mediaAddr,
+					     sizeof(tmpFName));
 		if (mediaError != SUCCESS) {
 			retVal = UINT32_MAX;
 			break;
@@ -670,7 +754,7 @@ NDEBUG_STATIC uint32_t findEntry(const Media_Desc_p media, const DIR_Entry_p ent
  * @return
  * @note TEST only!
  */
-NDEBUG_STATIC size_t findMaxFreeBlock(const Media_Desc_p media)
+NDEBUG_STATIC size_t findMaxFreeBlock(const Media_Desc_t * media)
 {
 #ifdef DEBUG
 	size_t retVal;
@@ -719,7 +803,8 @@ NDEBUG_STATIC size_t findMaxFreeBlock(const Media_Desc_p media)
  * @return 0 if no space needs to be allocated; UINT32_MAX in case of no room or error;
  * @return start address of the media to write data
  */
-NDEBUG_STATIC uint32_t allocateClusters(uint8_t *clusterTable, size_t clusterTableSize,
+NDEBUG_STATIC uint32_t allocateClusters(uint8_t *clusterTable,
+					size_t clusterTableSize,
 					size_t requestedSize)
 {
 	uint32_t retVal;
@@ -756,7 +841,8 @@ NDEBUG_STATIC uint32_t allocateClusters(uint8_t *clusterTable, size_t clusterTab
 				}
 				zeroes++;
 				if (zeroes == reqClusters) {
-					retVal = cluster2Addr(by * CHAR_BIT + bi);
+					retVal = cluster2Addr(by * CHAR_BIT +
+							      bi);
 					goto fExit;
 				}
 			} else {
@@ -770,7 +856,8 @@ NDEBUG_STATIC uint32_t allocateClusters(uint8_t *clusterTable, size_t clusterTab
 fExit:
 	/* mark allocated clusters as busy */
 	if (retVal != UINT32_MAX) {
-		if (toggleClusters(clusterTable, by, bi, reqClusters) != SUCCESS) {
+		if (toggleClusters(clusterTable, by, bi, reqClusters) !=
+		    SUCCESS) {
 			retVal = UINT32_MAX;
 		}
 	}
@@ -805,8 +892,8 @@ static size_t inline addr2Cluster(uint32_t addr)
  * @param reqClusters #of clusters to mark
  * @return ERROR or SUCCESS
  */
-static ErrorStatus inline toggleClusters(uint8_t *clusterTable, size_t by, size_t bi,
-					 size_t reqClusters)
+static ErrorStatus inline toggleClusters(uint8_t *clusterTable, size_t by,
+					 size_t bi, size_t reqClusters)
 {
 	ErrorStatus retVal;
 	retVal = SUCCESS;
@@ -831,55 +918,19 @@ fExit:
 }
 
 /**
- * @brief bitMask returns byte with n ones set, starting from LSB
- * @param n how many bytes to be set
- * @return bit mask
- */
-NDEBUG_STATIC uint8_t getBitMask(uint8_t n)
-{
-	uint8_t retVal = 0U;
-	if (n <= 8U) {
-		retVal = (uint8_t)((0x01U << n) - 1U);
-	}
-	return retVal;
-}
-
-/**
- * @brief checkFATCRC32 checks entire FAT CRC32 for equality to stored crc
- * @param crc stored crc32
- * @return 0 if all is OK, UINT32_MAX otherwise
- * @todo  implement later!
- */
-NDEBUG_STATIC size_t checkFATCRC32(uint32_t crc)
-{
-	return (crc ^ crc);
-}
-
-/**
- * @brief checkFATFile checks integrity of the FAT file
- * @param media media description table
- * @return 0 if all is OK, UINT32_MAX otherwise
- */
-NDEBUG_STATIC size_t checkFATFile(const Media_Desc_p media)
-{
-	(void)(media);
-	return 0U;
-}
-
-/**
  * @brief FindFreeSlot returns first available slot in directory table
  * @param media media description table
  * @return index of the slot or UINT32_MAX in case of error
  */
-NDEBUG_STATIC size_t FindFreeSlot(const Media_Desc_p media)
+NDEBUG_STATIC size_t FindFreeSlot(const Media_Desc_t* const media)
 {
 	size_t retVal;
 	retVal = UINT32_MAX;
 	DIR_Entry_t tmp_entry;
 	for (size_t i = 1U; i < DIR_ENTRIES; i++) {
 		size_t mediaAddr = getDIR_EntryOffset(i);
-		if (media->readFunc((uint8_t *)&tmp_entry, mediaAddr, sizeof(DIR_Entry_t)) !=
-		    SUCCESS) {
+		if (media->readFunc((uint8_t *)&tmp_entry, mediaAddr,
+				    sizeof(DIR_Entry_t)) != SUCCESS) {
 			break;
 		}
 		if (tmp_entry.FileStatus == FStateNoFile) {
@@ -907,7 +958,8 @@ NDEBUG_STATIC size_t SaveDirEntry(const Media_Desc_p media, size_t entryIndex,
 		goto fExit;
 	}
 	size_t mediaAddr = getDIR_EntryOffset(entryIndex);
-	if (media->writeFunc((uint8_t *)entry, mediaAddr, sizeof(DIR_Entry_t)) != SUCCESS) {
+	if (media->writeFunc((uint8_t *)entry, mediaAddr,
+			     sizeof(DIR_Entry_t)) != SUCCESS) {
 		goto fExit;
 	}
 
@@ -924,28 +976,36 @@ fExit:
  * @param media media description table
  * @return new CRC32 or UINT32_MAX in case of error
  */
-NDEBUG_STATIC uint32_t RenewDirCRC32(const Media_Desc_p media)
+NDEBUG_STATIC uint32_t RenewDirCRC32(const Media_Desc_t * const media)
 {
 	/* the func is static, so do not check pointers against NULL */
 	uint32_t retVal;
 	retVal = UINT32_MAX;
 	uint32_t crc32 = 0x00U;
 	DIR_Entry_t dirEntry;
+
+	TAKE_MUTEX(CRC_MutexHandle);
+
 	for (size_t i = 0U; i < DIR_ENTRIES; i++) {
 		size_t mediaAddr = getDIR_EntryOffset(i);
-		if (media->readFunc((uint8_t *)&dirEntry, mediaAddr, sizeof(DIR_Entry_t)) !=
-		    SUCCESS) {
+		if (media->readFunc((uint8_t *)&dirEntry, mediaAddr,
+				    sizeof(DIR_Entry_t)) != SUCCESS) {
 			goto fExit;
 		}
 		crc32 = CRC32((uint8_t *)&dirEntry, sizeof(DIR_Entry_t), crc32);
 	}
+
+	GIVE_MUTEX(CRC_MutexHandle);
+
 	/* write header */
 	FAT_Header_t header;
-	if (media->readFunc((uint8_t *)&header, 0U, sizeof(FAT_Header_t)) != SUCCESS) {
+	if (media->readFunc((uint8_t *)&header, 0U, sizeof(FAT_Header_t)) !=
+	    SUCCESS) {
 		goto fExit;
 	}
 	header.DIR_CRC32 = crc32;
-	if (media->writeFunc((uint8_t *)&header, 0U, sizeof(FAT_Header_t)) == SUCCESS) {
+	if (media->writeFunc((uint8_t *)&header, 0U, sizeof(FAT_Header_t)) ==
+	    SUCCESS) {
 		retVal = crc32;
 	}
 fExit:
@@ -959,7 +1019,7 @@ fExit:
  * @note string longer than limit will be truncated
  * @note 0123456789 ABCDEFGHIJ KLMNOPQRST UVWXYZ ! # $ % & ' ( ) - @ ^ _ ` { } ~
  */
-NDEBUG_STATIC void encodeFName(char *name[MAX_FILENAME_LEN], const char *sname)
+NDEBUG_STATIC void encodeFName(char *name[MAX_FILENAME_LEN], const char * sname)
 {
 	(void)name;
 	(void)sname;
@@ -970,7 +1030,7 @@ NDEBUG_STATIC void encodeFName(char *name[MAX_FILENAME_LEN], const char *sname)
  * @param name
  * @param sname
  */
-NDEBUG_STATIC void decodeFName(const char *name[MAX_FILENAME_LEN], char *sname)
+NDEBUG_STATIC void decodeFName(const char *name[MAX_FILENAME_LEN], char * sname)
 {
 	(void)name;
 	(void)sname;
@@ -982,11 +1042,12 @@ NDEBUG_STATIC void decodeFName(const char *name[MAX_FILENAME_LEN], char *sname)
  * @param buf
  * @return ERROR or SUCCESS
  */
-NDEBUG_STATIC ErrorStatus readFAT(const Media_Desc_p media, uint8_t *buf)
+NDEBUG_STATIC ErrorStatus readFAT(const Media_Desc_t * const media, uint8_t *buf)
 {
 	/* the func is static, so do not check pointers against NULL */
 	ErrorStatus retVal;
-	retVal = media->readFunc(buf, getClusterTableOffset(), getClusterTableSize(media));
+	retVal = media->readFunc(buf, getClusterTableOffset(),
+				 getClusterTableSize(media));
 	return retVal;
 }
 
@@ -1000,7 +1061,8 @@ NDEBUG_STATIC ErrorStatus writeFAT(const Media_Desc_p media, uint8_t *buf)
 {
 	/* the func is static, so do not check pointers against NULL */
 	ErrorStatus retVal;
-	retVal = media->writeFunc(buf, getClusterTableOffset(), getClusterTableSize(media));
+	retVal = media->writeFunc(buf, getClusterTableOffset(),
+				  getClusterTableSize(media));
 	return retVal;
 }
 
@@ -1112,6 +1174,8 @@ const char *FRESULT_String(FRESULT res)
  */
 FRESULT f_write(FIL *fp, void *const buff, UINT btw, UINT *bw)
 {
+	TAKE_MUTEX(FS_Mutex01Handle);
+
 	FRESULT retVal;
 	retVal = FR_INVALID_PARAMETER;
 
@@ -1143,16 +1207,19 @@ FRESULT f_write(FIL *fp, void *const buff, UINT btw, UINT *bw)
 	uint32_t to_write;
 	to_write = ((int32_t)btw <= avail) ? btw : (uint32_t)avail;
 
-	if (fp->media->writeFunc(buff, fp->fileDir.FileAddress, to_write) == ERROR) {
+	if (fp->media->writeFunc((uint8_t*)buff, fp->fileDir.FileAddress, to_write) ==
+	    ERROR) {
 		retVal = FR_DISK_ERR;
 		goto fExit;
 	}
 	fp->filePtr += to_write;
-	fp->fileDir.FileSize =
-		(fp->filePtr > fp->fileDir.FileSize) ? (uint16_t)fp->filePtr : fp->fileDir.FileSize;
+	fp->fileDir.FileSize = (fp->filePtr > fp->fileDir.FileSize) ?
+				       (uint16_t)fp->filePtr :
+				       fp->fileDir.FileSize;
 	*bw = to_write;
 	retVal = FR_OK;
 fExit:
+	GIVE_MUTEX(FS_Mutex01Handle);
 	return retVal;
 }
 
@@ -1167,6 +1234,8 @@ fExit:
  */
 FRESULT f_read(FIL *fp, void *buff, UINT btr, UINT *br)
 {
+	TAKE_MUTEX(FS_Mutex01Handle);
+
 	FRESULT retVal;
 	retVal = FR_INVALID_PARAMETER;
 
@@ -1201,7 +1270,8 @@ FRESULT f_read(FIL *fp, void *buff, UINT btr, UINT *br)
 	uint32_t to_read;
 	to_read = ((int32_t)btr <= avail) ? btr : (uint32_t)avail;
 
-	if (fp->media->readFunc(buff, fp->fileDir.FileAddress, to_read) == ERROR) {
+	if (fp->media->readFunc((uint8_t*)buff, fp->fileDir.FileAddress, to_read) ==
+	    ERROR) {
 		retVal = FR_DISK_ERR;
 		goto fExit;
 	}
@@ -1209,6 +1279,7 @@ FRESULT f_read(FIL *fp, void *buff, UINT btr, UINT *br)
 	*br = to_read;
 	retVal = FR_OK;
 fExit:
+	GIVE_MUTEX(FS_Mutex01Handle);
 	return retVal;
 }
 
@@ -1247,6 +1318,8 @@ FRESULT f_rewind(FIL *fp)
  */
 FRESULT f_lseek(FIL *fp, FSIZE_t ofs)
 {
+	TAKE_MUTEX(FS_Mutex01Handle);
+
 	FRESULT retVal;
 	retVal = isFileValid(fp);
 	if (retVal != FR_OK) {
@@ -1255,7 +1328,9 @@ FRESULT f_lseek(FIL *fp, FSIZE_t ofs)
 
 	switch (fp->fileDir.FileStatus) {
 	case FStateOpenedR: {
-		fp->filePtr = (ofs >= fp->fileDir.FileSize) ? fp->fileDir.FileSize : ofs;
+		fp->filePtr = (ofs >= fp->fileDir.FileSize) ?
+				      fp->fileDir.FileSize :
+				      ofs;
 		retVal = FR_OK;
 		break;
 	}
@@ -1276,6 +1351,7 @@ FRESULT f_lseek(FIL *fp, FSIZE_t ofs)
 	}
 
 fExit:
+	GIVE_MUTEX(FS_Mutex01Handle);
 	return retVal;
 }
 
@@ -1318,10 +1394,10 @@ fExit:
 NDEBUG_STATIC bool isPtrValid(const void *p)
 {
 	if (p == NULL) {
-//#ifdef DEBUG
-//		printf("Panic! Null pointer detected!\n");
-//		exit(-3);
-//#endif
+		//#ifdef DEBUG
+		//		printf("Panic! Null pointer detected!\n");
+		//		exit(-3);
+		//#endif
 		return false;
 	} else {
 		return true;
@@ -1333,7 +1409,7 @@ NDEBUG_STATIC bool isPtrValid(const void *p)
  * @param media
  * @return true or false
  */
-NDEBUG_STATIC bool isMediaValid(const Media_Desc_p media)
+NDEBUG_STATIC bool isMediaValid(const Media_Desc_t *media)
 {
 	bool retVal;
 	retVal = false;
@@ -1343,7 +1419,8 @@ NDEBUG_STATIC bool isMediaValid(const Media_Desc_p media)
 	if (isPtrValid((void *)media->readFunc) == false) {
 		goto fExit;
 	}
-	if ((isPtrValid((void *)media->writeFunc) == false) && (media->mode != MEDIA_RO)) {
+	if ((isPtrValid((void *)media->writeFunc) == false) &&
+	    (media->mode != MEDIA_RO)) {
 		goto fExit;
 	}
 	retVal = true;
@@ -1356,8 +1433,10 @@ fExit:
  * @param media
  * @return
  */
-FRESULT f_checkFS(const Media_Desc_t * media)
+FRESULT f_checkFS(const Media_Desc_t *media)
 {
+	TAKE_MUTEX(FS_Mutex01Handle);
+
 	FRESULT retVal = FR_INVALID_OBJECT;
 	if (isMediaValid(media) == false) {
 		goto fExit;
@@ -1367,7 +1446,8 @@ FRESULT f_checkFS(const Media_Desc_t * media)
 	size_t mediaAddr = getDIR_EntryOffset(0U);
 	ErrorStatus mediaError;
 
-	mediaError = media->readFunc((uint8_t *)&FATFile, mediaAddr, sizeof(DIR_Entry_t));
+	mediaError = media->readFunc((uint8_t *)&FATFile, mediaAddr,
+				     sizeof(DIR_Entry_t));
 	if (mediaError != SUCCESS) {
 		retVal = FR_DISK_ERR;
 		goto fExit;
@@ -1383,21 +1463,29 @@ FRESULT f_checkFS(const Media_Desc_t * media)
 	}
 	uint32_t DIR_CRC = 0U; /* ROOT directory's CRC32 */
 
+	TAKE_MUTEX(CRC_MutexHandle);
+
 	for (size_t i = 0U; i < DIR_ENTRIES; ++i) {
 		size_t mediaAddr = getDIR_EntryOffset(i);
 		memset(&FATFile, 0, sizeof(DIR_Entry_t));
 
-		mediaError = media->readFunc((uint8_t *)&FATFile, mediaAddr, sizeof(DIR_Entry_t));
+		mediaError = media->readFunc((uint8_t *)&FATFile, mediaAddr,
+					     sizeof(DIR_Entry_t));
 		if (mediaError != SUCCESS) {
 			retVal = FR_DISK_ERR;
 			goto fExit;
 		} else {
-			DIR_CRC = CRC32((uint8_t *)&FATFile, sizeof(DIR_Entry_t), DIR_CRC);
+			DIR_CRC = CRC32((uint8_t *)&FATFile,
+					sizeof(DIR_Entry_t), DIR_CRC);
 		}
 	}
+
+	GIVE_MUTEX(CRC_MutexHandle);
+
 	/* read CRC32 from header */
 	FAT_Header_t header;
-	mediaError = media->readFunc((uint8_t *)&header, 0U, sizeof(FAT_Header_t));
+	mediaError =
+		media->readFunc((uint8_t *)&header, 0U, sizeof(FAT_Header_t));
 	if (mediaError != SUCCESS) {
 		retVal = FR_DISK_ERR;
 		goto fExit;
@@ -1408,5 +1496,6 @@ FRESULT f_checkFS(const Media_Desc_t * media)
 		retVal = FR_OK;
 	}
 fExit:
+	GIVE_MUTEX(FS_Mutex01Handle);
 	return retVal;
 }

@@ -9,14 +9,14 @@
 
 #include <time.h>
 
-#include "stm32f1xx_hal.h"
-
 #include "lan.h"
 
-#include "ntp.h"
 #include "xprintf.h"
-#include "rtc.h"
+#include "rtc_helpers.h"
+#include "tiny-fs.h"
+#include "ip_helpers.h"
 
+#include "ntp.h"
 #include "debug_settings.h"
 
 ErrorStatus NTP_sync(ip_pair_t serv)
@@ -78,17 +78,17 @@ ErrorStatus NTP_sync(ip_pair_t serv)
 	NTP_time.mSeconds = 0U;
 
 	if (SaveTimeToRTC(&NTP_time) != SUCCESS) {
-#ifdef _NTP_DEBUG_PRINT
+#ifdef NTP_DEBUG_PRINT
 		xputs("ntp.c time saving error!\n");
 #endif
 		result = ERROR;
 	} else {
-#ifdef _NTP_DEBUG_PRINT
+#ifdef NTP_DEBUG_PRINT
 		xputs("ntp.c sync OK!\n");
 #endif
 	}
 
-#ifdef _NTP_DEBUG_PRINT
+#ifdef NTP_DEBUG_PRINT
 	xprintf("NTP seconds: %d\n", NTP_packet.txTm_s);
 #endif
 fExit:
