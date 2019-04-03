@@ -11,14 +11,6 @@
 
 /* TFTP section */
 
-#if (1)
-
-#define	TFTP_STRESS_TEST
-#define TFTP_ERR_STATS
-#define	TFTP_STRESS_FILESIZE	( (uint32_t)32767998 )
-
-#endif
-
 #define	TFTP_DEBUG_PRINT
 
 /* MQTT-SN PUB section */

@@ -90,6 +90,23 @@ fExit:
 	return retVal;
 }
 
+/**
+ * @brief ReadIPConfigFileNew wrapper for ReadIPConfigFile
+ * @param media
+ * @param cfg_pool
+ * @return
+ */
+FRESULT ReadIPConfigFileNew(const Media_Desc_t * const media, cfg_pool_t * cfg_pool)
+{
+	FRESULT retVal = FR_INVALID_PARAMETER;
+	if (cfg_pool != NULL) {
+		retVal = ReadIPConfigFile(media,
+					  cfg_pool->file_name,
+					  cfg_pool->default_cfg,
+					  &cfg_pool->pair);
+	}
+	return retVal;
+}
 
 /**
  * @brief SaveIPConfigFile
@@ -121,5 +138,22 @@ FRESULT SaveIPConfigFile(const Media_Desc_t * const media,
 	}
 
 fExit:
+	return retVal;
+}
+
+/**
+ * @brief SaveIPConfigFileNew wrapper for SaveIPConfigFile
+ * @param media
+ * @param cfg_pool
+ * @return
+ */
+FRESULT SaveIPConfigFileNew(const Media_Desc_t * const media, cfg_pool_t * cfg_pool)
+{
+	FRESULT retVal = FR_INVALID_PARAMETER;
+	if (cfg_pool != NULL) {
+		retVal = SaveIPConfigFile(media,
+					  cfg_pool->file_name,
+					  cfg_pool->default_cfg);
+	}
 	return retVal;
 }

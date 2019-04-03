@@ -15,6 +15,7 @@
 #include "config_files.h"
 #include "ascii_helpers.h"
 #include "ip_helpers.h"
+#include "messages.h"
 
 #include "file_io.h"
 
@@ -43,16 +44,19 @@ static const struct IP Log_IP_Cfg_File_Default = {
 /* configuration file */
 static const char *IP_Cfg_File = "LIP_CFG";
 
+static char * task_name = "logger_task";
+
 /**
  * @brief logger_task_init
  */
 void logger_task_init(void)
 {
+
 	pdiagsoc = NULL;
 	register_magic(LOGGER_TASK_MAGIC);
 	i_am_alive(LOGGER_TASK_MAGIC);
 
-	char *cfg_file_err_msg = "Log IP config file error\n";
+	messages_TaskInit_started(task_name);
 
 	ip_pair_t IP_params;
 	FRESULT res;
@@ -72,11 +76,13 @@ void logger_task_init(void)
 		if (pdiagsoc == NULL) {
 			loop("No avail. socket\n");
 		}
-		xputs("Logger task init OK. Switching logging to UDP.\n");
+		messages_TaskInit_OK(task_name);
+		xputs("Switching logging to UDP.\n");
 		taskENTER_CRITICAL();
 
 		taskEXIT_CRITICAL();
-		xputs("Logger task switched to UDP.\n");
+		xputs(task_name);
+		xputs(" switched to UDP.\n");
 		i_am_alive(LOGGER_TASK_MAGIC);
 	} else {
 		init_log_ip_cfg();
@@ -98,9 +104,8 @@ void logger_task_run(void)
  */
 static void __attribute__((noreturn)) loop(char *msg)
 {
-	static const char *logger_init_err_msg = "Logger task init error! ";
+	messages_TaskInit_fail(task_name);
 
-	xputs(logger_init_err_msg);
 	xputs(msg);
 
 	for (;;) {

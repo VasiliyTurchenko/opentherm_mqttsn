@@ -10,7 +10,6 @@
 
 #include "tiny-fs.h"
 
-
 /**
  * @brief ReadBytes reads bytes from file
  * @param media pointer to media descriptor
@@ -21,20 +20,17 @@
  * @param buf pointer to the buffer
  * @return FRESULT
  */
-FRESULT ReadBytes(const Media_Desc_t * const media,
-		   const char * const name,
-		   size_t fpos,
-		   size_t btr,
-		   size_t * const br,
-		   uint8_t * buf)
+FRESULT ReadBytes(const Media_Desc_t *const media, const char *const name,
+		  size_t fpos, size_t btr, size_t *const br, uint8_t *buf)
 {
 	FRESULT retVal = FR_INVALID_PARAMETER;
-	FRESULT res;
-	if ((media == NULL) || (name == NULL) || (br == NULL) || (buf == NULL)) {
+	FRESULT res = FR_INVALID_PARAMETER;
+	if ((media == NULL) || (name == NULL) || (br == NULL) ||
+	    (buf == NULL)) {
 		return retVal;
 	}
 	fHandle_t file;
-	file.media = (Media_Desc_t*)media;
+	file.media = (Media_Desc_t *)media;
 	char cut_name[MAX_FILENAME_LEN + 1];
 	strncpy(cut_name, name, MAX_FILENAME_LEN);
 	cut_name[MAX_FILENAME_LEN] = '\0';
@@ -47,7 +43,7 @@ FRESULT ReadBytes(const Media_Desc_t * const media,
 	if (retVal != FR_OK) {
 		goto fExit;
 	}
-	retVal = f_read(&file, buf, (UINT)btr, (UINT*)br);
+	retVal = f_read(&file, buf, (UINT)btr, (UINT *)br);
 
 	res = f_close(&file);
 
@@ -66,25 +62,23 @@ fExit:
  * @param buf pointer to the buffer
  * @return FRESULT
  */
-FRESULT WriteBytes(const Media_Desc_t *const media,
-		    const char * name,
-		    size_t fpos,
-		    size_t btw,
-		    size_t * const bw,
-		    const uint8_t * buf)
+FRESULT WriteBytes(const Media_Desc_t *const media, const char *name,
+		   size_t fpos, size_t btw, size_t *const bw,
+		   const uint8_t *buf)
 {
 	FRESULT retVal = FR_INVALID_PARAMETER;
 	FRESULT res;
-	if ((media == NULL) || (name == NULL) || (bw == NULL) || (buf == NULL)) {
+	if ((media == NULL) || (name == NULL) || (bw == NULL) ||
+	    (buf == NULL)) {
 		return retVal;
 	}
 	fHandle_t file;
-	file.media = (Media_Desc_t*)media;
+	file.media = (Media_Desc_t *)media;
 	char cut_name[MAX_FILENAME_LEN + 1];
 	strncpy(cut_name, name, MAX_FILENAME_LEN);
 	cut_name[MAX_FILENAME_LEN] = '\0';
 
-//	retVal = f_open(&file, cut_name, (BYTE)FModeWrite);
+	//	retVal = f_open(&file, cut_name, (BYTE)FModeWrite);
 
 	retVal = NewFile(&file, cut_name, btw, FModeWrite);
 	if (retVal != FR_OK) {
@@ -94,10 +88,9 @@ FRESULT WriteBytes(const Media_Desc_t *const media,
 	if (retVal != FR_OK) {
 		goto fExit;
 	}
-	retVal = f_write(&file, buf, (UINT)btw, (UINT*)bw);
+	retVal = f_write(&file, (void*)buf, (UINT)btw, (UINT *)bw);
 fExit:
 	res = f_close(&file);
 	retVal = (retVal != FR_OK) ? retVal : res;
 	return retVal;
 }
-

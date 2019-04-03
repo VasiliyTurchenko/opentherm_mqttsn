@@ -26,6 +26,7 @@
 #define STROBE_0
 #endif
 
+
 /* reseved area for bits-to-code and back conversion */
 /* size in bytes */
 //#define MANCHESTER_DTA_SIZE

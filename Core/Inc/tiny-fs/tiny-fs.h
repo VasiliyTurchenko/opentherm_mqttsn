@@ -249,7 +249,7 @@ FRESULT CloseFile(fHandle_p file);
 
 FRESULT f_close (FIL* fp);							/* Close an open file object */
 
-FRESULT DeleteFile(const Media_Desc_p media, const char *name);
+FRESULT DeleteFile(const Media_Desc_t *media, const char *name);
 
 FRESULT f_unlink (const TCHAR* path);						/* Delete an existing file or directory */
 

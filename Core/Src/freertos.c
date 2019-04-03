@@ -91,6 +91,9 @@ osStaticMutexDef_t FS_Mutex01_ControlBlock;
 osMutexId CRC_MutexHandle;
 osStaticMutexDef_t CRC_Mutex_ControlBlock;
 
+osMutexId ManchesterTimer01MutexHandle;
+osStaticMutexDef_t ManchesterTimer01Mutex_ControlBlock;
+
 
 /* USER CODE END Variables */
 osThreadId LANPollTaskHandle;
@@ -207,6 +210,8 @@ void MX_FREERTOS_Init(void)
 	osMutexStaticDef(CRC_Mutex, &CRC_Mutex_ControlBlock);
 	CRC_MutexHandle = osMutexCreate(osMutex(CRC_Mutex));
 
+	osMutexStaticDef(ManchesterTimer01Mutex, &ManchesterTimer01Mutex_ControlBlock);
+	CRC_MutexHandle = osMutexCreate(osMutex(ManchesterTimer01Mutex));
 
 	/* USER CODE END RTOS_MUTEX */
 

@@ -40,14 +40,21 @@ size_t mystrcpy(uint8_t **dst, uint8_t **src, size_t nbytes, const uint8_t * max
 		return res;
 	}
 
-	size_t		i;
 	uintptr_t	k;
+		/* k is the last requested source byte to copy */
 	k = (uintptr_t)*src + (uintptr_t)nbytes - sizeof(uint8_t);
+
 	uintptr_t	l;
-	l = (uintptr_t)maxsrcaddr - ((uintptr_t)*src + sizeof(uint8_t)) ;
+	/* l is the length of the source array */
+	l = (uintptr_t)maxsrcaddr - (uintptr_t)*src + sizeof(uint8_t) ;
+
+	size_t		i;
+	/* */
 	i = ( (uintptr_t)maxsrcaddr < k ) ? l : nbytes;
-	size_t		nb;
-	nb = i;
+
+	size_t		bytes_to_copy;
+	bytes_to_copy = i;
+
 	while (i > 0x00U) {
 		if (**src == 0U) {
 			(*src)++;
@@ -58,7 +65,7 @@ size_t mystrcpy(uint8_t **dst, uint8_t **src, size_t nbytes, const uint8_t * max
 		(*src)++;
 		i--;
 	}
-	res = (nb - i);
+	res = (bytes_to_copy - i);
 	while (i > 0x00U) {
 		**dst = 0x00U;
 		(*dst)++;
@@ -97,7 +104,7 @@ size_t mystrcpynf(uint8_t **dst, uint8_t **src, size_t nbytes, const uint8_t * m
 	uintptr_t	k;
 	k = (uintptr_t)*src + (uintptr_t)nbytes - sizeof(uint8_t);
 	uintptr_t	l;
-	l = (uintptr_t)maxsrcaddr - ((uintptr_t)*src + sizeof(uint8_t)) ;
+	l = (uintptr_t)maxsrcaddr - (uintptr_t)*src + sizeof(uint8_t) ;
 	i = ( (uintptr_t)maxsrcaddr < k ) ? l : nbytes;
 	size_t		nb;
 	nb = i;
@@ -113,7 +120,7 @@ size_t mystrcpynf(uint8_t **dst, uint8_t **src, size_t nbytes, const uint8_t * m
 	}
 	res = (nb - i);
 	return res;
-}  
+}
 
 /**
   * @brief  write_u16 stores 16-bit value to thr memory pointed by uint8_t* addr
@@ -127,7 +134,7 @@ void write_u16(uint8_t **addr, const uint16_t val)
 	**addr = (uint8_t)val;
 	(*addr)++;
 	**addr = (uint8_t)(val >> 8U);
-	(*addr)++;	
+	(*addr)++;
 }
 
 /**
@@ -143,7 +150,7 @@ void write_u16_htons(uint8_t **addr, const uint16_t val)
 	**addr = (uint8_t)(val >> 8U);
 	(*addr)++;
 	**addr = (uint8_t)val;
-	(*addr)++;	
+	(*addr)++;
 }
 
 
@@ -151,7 +158,7 @@ void write_u16_htons(uint8_t **addr, const uint16_t val)
 /**
   * @brief  read_u16 reads uint16 from memory location pointed by addr
   * @note  addr then inncrements
-  * @param  addr pointer to the source location  
+  * @param  addr pointer to the source location
   * @retval uint16_t value from memory
   */
 uint16_t read_u16(uint8_t **addr)
@@ -167,7 +174,7 @@ uint16_t read_u16(uint8_t **addr)
 /**
   * @brief  read_u16_ntohs reads network ordered uint16 from memory location pointed by addr
   * @note  addr then inncrements
-  * @param  addr pointer to the source location  
+  * @param  addr pointer to the source location
   * @retval uint16_t value from memory
   */
 uint16_t read_u16_ntohs(uint8_t **addr)

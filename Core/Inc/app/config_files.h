@@ -18,6 +18,10 @@
 #define IP_LEN 12U
 #define PORT_LEN 5U
 
+#ifndef MAX_FILENAME_LEN
+#define MAX_FILENAME_LEN 7U	/* look at tiny-fs.h */
+#endif
+
 struct __attribute__((packed)) MAC {
 	char mac_h[4];
 	char mac_v[MAC_LEN];
@@ -38,6 +42,28 @@ struct __attribute__((packed)) ip_cfg {
 	struct IP GW;
 	char zero;
 };
+
+
+#define		ROOT_TOPIC_LEN (40)
+#define		MAX_TOPICSTR_LEN	(ROOT_TOPIC_LEN + 10)
+
+
+struct __attribute__((packed)) MQTT_topic_para {
+	char rootTopic[ROOT_TOPIC_LEN];
+	char topicText[10];
+	char pub_client_id_string[11];
+};
+
+
+struct __attribute__((packed)) MQTT_parameters {
+	struct IP MQTT_IP_parameters;			 /* struct maps to their file */
+	char MQTT_IP_filename[MAX_FILENAME_LEN + 1];
+	struct MQTT_topic_para MQTT_topic_parameters; /* struct maps to their file */
+	char MQTT_topic_filename[MAX_FILENAME_LEN + 1];
+	char * long_taskName;
+	char * short_taskName;
+};
+
 
 /* IP_Cfg_File format */
 //static const char *IP_Cfg_File_Default =

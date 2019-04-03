@@ -226,7 +226,7 @@ ErrorStatus Format(const Media_Desc_t * const media)
 	p->FileSize = (uint16_t)clusterTableSize;
 	p->FileStatus = FStateFAT;
 	p->FileAddress = getClusterTableOffset();
-	/* write DIR entry of the "FATFAT" file */
+	/* write DIR entry of the "$$FAT$$" file */
 	retVal = media->writeFunc((uint8_t *)p, offsetof(FAT_Begin_t, entry0),
 				  sizeof(DIR_Entry_t));
 	if (retVal != SUCCESS) {
@@ -594,7 +594,7 @@ FRESULT f_unlink(const TCHAR *path)
  * @param name name of the file
  * @return FRESULT
  */
-FRESULT DeleteFile(const Media_Desc_p media, const char *name)
+FRESULT DeleteFile(const Media_Desc_t * media, const char *name)
 {
 	TAKE_MUTEX(FS_Mutex01Handle);
 
@@ -816,6 +816,8 @@ NDEBUG_STATIC uint32_t allocateClusters(uint8_t *clusterTable,
 	if ((clusterTable == NULL) || (clusterTableSize == 0U)) {
 		goto fExit;
 	}
+
+	/*if zero bytes requested, allocate 1 cluster */
 	requestedSize = (requestedSize == 0U) ? 1U : requestedSize;
 
 	reqClusters = requestedSize / FS_CLUSTER_SIZE;
@@ -1197,14 +1199,22 @@ FRESULT f_write(FIL *fp, void *const buff, UINT btw, UINT *bw)
 		retVal = FR_DENIED;
 		goto fExit;
 	}
-	int32_t avail;
-	avail = (int32_t)fp->fileDir.FileSize -
-		(int32_t)fp->filePtr; /* w/o possible cluster tail */
-	int32_t freeTail;
-	freeTail = FS_CLUSTER_SIZE - (fp->fileDir.FileSize % FS_CLUSTER_SIZE);
+	int32_t avail;		/* how many bytes can be written into existing file size */
+	int32_t freeTail;	/* how many bytes are in the last cluster beyond file end */
 
-	avail = (avail < 0) ? 0 : avail + freeTail;
+	/* fileDir.FileSize = 0 guarantees 1 allocated cluster */
+	if ((int32_t)fp->fileDir.FileSize == 0U) {
+		avail = 0U;
+		freeTail = FS_CLUSTER_SIZE;
+	} else {
+		avail = (int32_t)fp->fileDir.FileSize - (int32_t)fp->filePtr; /* w/o possible cluster tail */
+		freeTail = ((fp->fileDir.FileSize % FS_CLUSTER_SIZE) == 0U) \
+		? 0 : (FS_CLUSTER_SIZE - (fp->fileDir.FileSize % FS_CLUSTER_SIZE));
+	}
+	avail += freeTail;
+
 	uint32_t to_write;
+
 	to_write = ((int32_t)btw <= avail) ? btw : (uint32_t)avail;
 
 	if (fp->media->writeFunc((uint8_t*)buff, fp->fileDir.FileAddress, to_write) ==

@@ -12,6 +12,8 @@
 #include "lan.h"
 #include "task_tokens.h"
 
+#include "messages.h"
+
 extern osMutexId ETH_Mutex01Handle;
 
 /**
@@ -19,9 +21,10 @@ extern osMutexId ETH_Mutex01Handle;
  */
 void lan_poll_task_init(void)
 {
+	char * task_name = "lan_poll_task";
 	/* watchdog magic */
 	register_magic(LAN_POLL_TASK_MAGIC);
-	xputs("lan_poll task init OK.\n");
+	messages_TaskInit_OK(task_name);
 }
 
 /**

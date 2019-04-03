@@ -89,12 +89,14 @@ ErrorStatus NTP_sync(ip_pair_t serv)
 	}
 
 #ifdef NTP_DEBUG_PRINT
-	xprintf("NTP seconds: %d\n", NTP_packet.txTm_s);
+	NTP_time.Seconds = 0U;
+	GetTimeFromRTC(&NTP_time);
+	xprintf("NTP seconds: %d\n", NTP_time.Seconds);
 #endif
 fExit:
 	return result;
 }
 
-#undef _NTP_DEBUG
+#undef NTP_DEBUG
 
 /* ##########################  EOF  ##########################*/

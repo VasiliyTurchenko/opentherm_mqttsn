@@ -28,6 +28,15 @@ typedef	struct	ip_pair {		/* !< general storage object */
 		uint16_t	port;
 	}	ip_pair_t;
 
+
+/* typedef to ease */
+typedef struct cfg_pool {
+	ip_pair_t pair;
+	const struct IP * default_cfg;
+	const char * file_name;
+} cfg_pool_t;
+
+
 FRESULT ReadIPConfigFile(const Media_Desc_t * const media,
 			 const char * const fname,
 			 const struct IP * const template,
@@ -36,6 +45,12 @@ FRESULT ReadIPConfigFile(const Media_Desc_t * const media,
 FRESULT SaveIPConfigFile(const Media_Desc_t * const media,
 			 const char * const fname,
 			 const struct IP * const template);
+
+FRESULT ReadIPConfigFileNew(const Media_Desc_t * const media,
+			    cfg_pool_t * cfg_pool);
+
+FRESULT SaveIPConfigFileNew(const Media_Desc_t * const media,
+			    cfg_pool_t * cfg_pool);
 
 #ifdef __cplusplus
  }

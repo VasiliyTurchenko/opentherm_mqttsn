@@ -117,7 +117,7 @@ ErrorStatus AppStartUp(void)
 	/* set up periodic UART transmissions */
 	Transmit_non_RTOS = true;
 
-	xputs("Starting up...\n");
+	xputs("\n\nStarting up...\n");
 
 	Cold_Boot(); /* Cold_Boot always goes first */
 
