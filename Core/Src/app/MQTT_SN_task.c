@@ -19,8 +19,6 @@
 MQTT_SN_Context_t	mqttsncontext01;	/* the static instance of the context for publishing */
 MQTT_SN_Context_t	mqttsncontext02;	/* the static instance of the context for subscribing */
 
-/* const char *roottopic = "tvv/5413/in-home/1st_floor/DIO_board/"; */
-
 #define		TOPIC_TEXT	"LD_ID:000"
 #define		TOPIC_CMD	"CMD:000"
 

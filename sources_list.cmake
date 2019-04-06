@@ -8,7 +8,7 @@ set(GROUP_CORE_SRC_APP
 		Core/Src/app/service_task.c
 		Core/Src/app/publish_task.c
 		Core/Src/app/subscribe_task.c
-		Core/Src/app/MQTT_SN_task.c
+#		Core/Src/app/MQTT_SN_task.c
 )
 
 set(GROUP_CORE_SRC_HELPERS
@@ -21,6 +21,7 @@ set(GROUP_CORE_SRC_HELPERS
 		Core/Src/helpers/ip_helpers.c
 		Core/Src/helpers/CRC32_helpers.c
 		Core/Src/helpers/messages.c
+		Core/Src/helpers/MQTT_config_helper.c
 )
 
 set(GROUP_CORE_SRC_LAN

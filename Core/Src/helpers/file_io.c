@@ -1,10 +1,14 @@
-/** @file file_io.c
+﻿/** @file file_io.c
  *  @brief file IO helpers
  *
  *  @author turchenkov@gmail.com
  *  @bug
  *  @date 10-Mar-2019
  */
+
+#include "FreeRTOS.h"
+#include "task.h"
+#include "cmsis_os.h"
 
 #include "string.h"
 
@@ -35,7 +39,20 @@ FRESULT ReadBytes(const Media_Desc_t *const media, const char *const name,
 	strncpy(cut_name, name, MAX_FILENAME_LEN);
 	cut_name[MAX_FILENAME_LEN] = '\0';
 
-	retVal = f_open(&file, cut_name, (BYTE)FModeRead);
+	do {
+		retVal = f_open(&file, cut_name, (BYTE)FModeRead);
+		if (retVal == FR_TOO_MANY_OPEN_FILES) {
+			if (xTaskGetSchedulerState() !=
+			    taskSCHEDULER_NOT_STARTED) {
+				vTaskDelay(pdMS_TO_TICKS(10U));
+			} else {
+				break;
+			}
+		} else {
+			break;
+		}
+	} while (1);
+
 	if (retVal != FR_OK) {
 		goto fExit;
 	}
@@ -80,7 +97,20 @@ FRESULT WriteBytes(const Media_Desc_t *const media, const char *name,
 
 	//	retVal = f_open(&file, cut_name, (BYTE)FModeWrite);
 
-	retVal = NewFile(&file, cut_name, btw, FModeWrite);
+	do {
+		retVal = NewFile(&file, cut_name, btw, FModeWrite);
+		if (retVal == FR_TOO_MANY_OPEN_FILES) {
+			if (xTaskGetSchedulerState() !=
+			    taskSCHEDULER_NOT_STARTED) {
+				vTaskDelay(pdMS_TO_TICKS(10U));
+			} else {
+				break;
+			}
+		} else {
+			break;
+		}
+	} while (1);
+
 	if (retVal != FR_OK) {
 		goto fExit;
 	}
@@ -88,7 +118,7 @@ FRESULT WriteBytes(const Media_Desc_t *const media, const char *name,
 	if (retVal != FR_OK) {
 		goto fExit;
 	}
-	retVal = f_write(&file, (void*)buf, (UINT)btw, (UINT *)bw);
+	retVal = f_write(&file, (void *)buf, (UINT)btw, (UINT *)bw);
 fExit:
 	res = f_close(&file);
 	retVal = (retVal != FR_OK) ? retVal : res;

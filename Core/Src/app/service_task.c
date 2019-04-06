@@ -144,7 +144,7 @@ void service_task_init(void)
 
 	if (need_reboot) {
 		messages_TaskInit_fail(task_name);
-		vTaskDelay(pdMS_TO_TICKS(500U));
+		vTaskDelay(pdMS_TO_TICKS(portMAX_DELAY));
 	} else {
 		messages_TaskInit_OK(task_name);
 	}

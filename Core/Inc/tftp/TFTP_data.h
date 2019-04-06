@@ -79,37 +79,6 @@ enum    tftp_state      {
 	};
 typedef enum    tftp_state      tftp_state_t;
 
-///* file states for file operations */
-//enum	file_state{
-//	FS_CLOSED = 1,			/*!<  the file isn't opened but exists */
-//	FS_NOT_EXIST,			/*!<  no such file */
-//	FS_OPENED_READ,			/*!<  a FILE is opened for reading */
-//	FS_OPENED_WRITE,		/*!<  a FILE is opened for writing */
-//	};
-//typedef	enum	file_state file_state_t;
-
-///*  file_state_t errors */
-//enum	file_error	{		/*  file_state_t errors */
-//	FILE_ERR_NOERROR = 0,
-//	FILE_ERR_FILE_NOT_FOUND,		/*!< file not found */
-//	FILE_ERR_FILE_ACC_VOLATION,		/*!< access violation */
-//	FILE_ERR_ILLEGAL_OPERATION		/*!< illegal operation */
-//	};
-//typedef	enum	file_error	file_error_t;
-
-///* for the open file requests */
-//#define	F_MODE_OPEN_READ	0x01U
-//#define	F_MODE_OPEN_WRITE	0x02U
-
-///* file handle  */
-//typedef struct hfile	{			/* file handle  */
-//	uint32_t		FilePos;	/*!< current position */
-//	uint8_t			* FileName;
-///*	uint8_t			fmode;	*/	/*!< file mode - read or write */
-//	file_state_t		fstate;
-//	file_error_t		ferror;
-//	} hfile_t;
-//typedef	hfile_t		* hfile_p;
 
 /* a context of the tftp operation */
 typedef struct tftp_context_ {
@@ -124,13 +93,7 @@ typedef struct tftp_context_ {
 	size_t			DataLen;
 	tftp_state_t		State;
 /* file handle */
-
 	fHandle_t		file;
-
-//	size_t			FilePos;	/*!< current position */
-//	size_t			FileSize;	/*!< size of the file */
-//	file_state_t		fstate;
-//	file_error_t		ferror;
 /* UDP sockets */
 	socket_p		in_sock;	/*!< pointer to the input socket */
 	socket_p		out_sock;	/*!< pointer to the output socket */

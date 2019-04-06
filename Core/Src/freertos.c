@@ -64,6 +64,8 @@
 #include "publish_task.h"
 #include "subscribe_task.h"
 
+#include "string.h"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -73,6 +75,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
+#define	STACK_FILLER	0xC0DAFADEU
 
 /* USER CODE END PD */
 
@@ -94,6 +98,16 @@ osStaticMutexDef_t CRC_Mutex_ControlBlock;
 osMutexId ManchesterTimer01MutexHandle;
 osStaticMutexDef_t ManchesterTimer01Mutex_ControlBlock;
 
+#ifdef DEBUG
+static volatile size_t LANPollTaskBuffer_depth;
+static volatile size_t PublishTaskBuffer_depth;
+static volatile size_t DiagPrintTaskBuffer_depth;
+static volatile size_t ProcSPSTaskBuffer_depth;
+static volatile size_t SubscribeTaskBuffer_depth;
+static volatile size_t ServiceTaskBuffer_depth;
+static volatile size_t ManchTaskBuffer_depth;
+#endif
+
 
 /* USER CODE END Variables */
 osThreadId LANPollTaskHandle;
@@ -109,7 +123,7 @@ osThreadId ProcSPSTaskHandle;
 uint32_t ProcSPSTaskBuffer[128];
 osStaticThreadDef_t ProcSPSTaskControlBlock;
 osThreadId SubscrbTaskHandle;
-uint32_t SubscribeTaskBuffer[200];
+uint32_t SubscribeTaskBuffer[256];
 osStaticThreadDef_t SubscribeTaskControlBlock;
 osThreadId ServiceTaskHandle;
 uint32_t ServiceTaskBuffer[168];
@@ -156,6 +170,75 @@ __weak void vApplicationIdleHook(void)
    important that vApplicationIdleHook() is permitted to return to its calling
    function, because it is the responsibility of the idle task to clean up
    memory allocated by the kernel to any task that has since been deleted. */
+
+#ifdef DEBUG
+	uint32_t * p;
+	size_t	i;
+
+	p = LANPollTaskBuffer;
+	i = 0U;
+	while ((i < 128U) && (*p == STACK_FILLER)) {
+		p++;
+		i++;
+	}
+	LANPollTaskBuffer_depth = i;
+
+	p = PublishTaskBuffer;
+	i = 0U;
+	while ((i < 256U) && (*p == STACK_FILLER)) {
+		p++;
+		i++;
+	}
+	PublishTaskBuffer_depth = i;
+
+	p = DiagPrintTaskBuffer;
+	i = 0U;
+	while ((i < 200U) && (*p == STACK_FILLER)) {
+		p++;
+		i++;
+	}
+	DiagPrintTaskBuffer_depth = i;
+
+	p = ProcSPSTaskBuffer;
+	i = 0U;
+	while ((i < 128U) && (*p == STACK_FILLER)) {
+		p++;
+		i++;
+	}
+	ProcSPSTaskBuffer_depth = i;
+
+	p = SubscribeTaskBuffer;
+	i = 0U;
+	while ((i < 256U) && (*p == STACK_FILLER)) {
+		p++;
+		i++;
+	}
+	SubscribeTaskBuffer_depth = i;
+
+
+	p = ServiceTaskBuffer;
+	i = 0U;
+	while ((i < 168U) && (*p == STACK_FILLER)) {
+		p++;
+		i++;
+	}
+	ServiceTaskBuffer_depth = i;
+
+	p = ManchTaskBuffer;
+	i = 0U;
+	while ((i < 128U) && (*p == STACK_FILLER)) {
+		p++;
+		i++;
+	}
+	ManchTaskBuffer_depth = i;
+
+#endif
+
+
+
+
+
+
 }
 /* USER CODE END 2 */
 
@@ -247,7 +330,7 @@ void MX_FREERTOS_Init(void)
 
 	/* definition and creation of SubscrbTask */
 	osThreadStaticDef(SubscrbTask, Start_SubscribeTask, osPriorityNormal, 0,
-			  200, SubscribeTaskBuffer, &SubscribeTaskControlBlock);
+			  256, SubscribeTaskBuffer, &SubscribeTaskControlBlock);
 	SubscrbTaskHandle = osThreadCreate(osThread(SubscrbTask), NULL);
 
 	/* definition and creation of ServiceTask */
@@ -261,7 +344,71 @@ void MX_FREERTOS_Init(void)
 	ManchTaskHandle = osThreadCreate(osThread(ManchTask), NULL);
 
 	/* USER CODE BEGIN RTOS_THREADS */
-	/* add threads, ... */
+/**
+ * @todo ADD STACK DEPTH MONITOR
+*/
+#ifdef DEBUG
+	uint32_t * p;
+	size_t	i;
+
+	p = LANPollTaskBuffer;
+	i = 120U;
+	while (i > 0U) {
+		*p = STACK_FILLER;
+		p++;
+		i--;
+	}
+
+	p = PublishTaskBuffer;
+	i = 248U;
+	while (i > 0U) {
+		*p = STACK_FILLER;
+		p++;
+		i--;
+	}
+
+	p = DiagPrintTaskBuffer;
+	i = 192U;
+	while (i > 0U) {
+		*p = STACK_FILLER;
+		p++;
+		i--;
+	}
+
+	p = ProcSPSTaskBuffer;
+	i = 120U;
+	while (i > 0U) {
+		*p = STACK_FILLER;
+		p++;
+		i--;
+	}
+
+	p = SubscribeTaskBuffer;
+	i = 248U;
+	while (i > 0U) {
+		*p = STACK_FILLER;
+		p++;
+		i--;
+	}
+
+	p = ServiceTaskBuffer;
+	i = 160U;
+	while (i > 0U) {
+		*p = STACK_FILLER;
+		p++;
+		i--;
+	}
+
+	p = ManchTaskBuffer;
+	i = 120U;
+	while (i > 0U) {
+		*p = STACK_FILLER;
+		p++;
+		i--;
+	}
+
+#endif
+
 	/* USER CODE END RTOS_THREADS */
 
 	/* USER CODE BEGIN RTOS_QUEUES */
@@ -301,9 +448,10 @@ void Start_PublishTask(void const *argument)
 {
 	/* USER CODE BEGIN Start_PublishTask */
 	(void)argument;
-
+	publish_task_init();
 	/* Infinite loop */
 	for (;;) {
+		publish_task_run();
 		osDelay(1);
 	}
 	/* USER CODE END Start_PublishTask */
@@ -345,10 +493,10 @@ void Start_ProcSPSTask(void const *argument)
 {
 	/* USER CODE BEGIN Start_ProcSPSTask */
 	(void)argument;
-	publish_task_init();
+
 	/* Infinite loop */
 	for (;;) {
-		publish_task_run();
+
 		osDelay(1);
 	}
 	/* USER CODE END Start_ProcSPSTask */

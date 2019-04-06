@@ -51,9 +51,7 @@ void manchester_task_init(void)
 				     stopBits, bitRate, bitOrder, startStopBit);
 	if (res == ERROR) {
 		messages_TaskInit_fail(task_name);
-		while (1) {
-			;
-		}
+		vTaskDelay(pdMS_TO_TICKS(portMAX_DELAY));
 	} else {
 		messages_TaskInit_OK(task_name);
 	}

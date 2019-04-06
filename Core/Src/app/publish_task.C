@@ -18,7 +18,9 @@
 #include "ip_helpers.h"
 #include "messages.h"
 
-#include "MQTT_SN_task.h"
+#include "mqtt_config_helper.h"
+
+//#include "MQTT_SN_task.h"
 
 extern const Media_Desc_t Media0;
 
@@ -55,80 +57,18 @@ static cfg_pool_t MQP_IP_cfg = {
 	(const char *)&MQTT_pub_parameters.MQTT_IP_filename,
 };
 
-static const char *ip_string = "IP";
-static const char *topic_string = "topic";
-
 /**
  * @brief publish_task_init
  */
 void publish_task_init(void)
 {
 	register_magic(PUB_TASK_MAGIC);
-	i_am_alive(PUB_TASK_MAGIC);
-	messages_TaskInit_started(MQTT_pub_parameters.long_taskName);
 
-	FRESULT res;
-	bool need_reboot = false;
+	mqtt_initialize(PUB_TASK_MAGIC, &MQTT_pub_parameters,
+			&MQTT_pub_working_set, &MQP_IP_cfg);
 
-	res = ReadIPConfigFileNew(&Media0, &MQP_IP_cfg);
-	xputs(MQTT_pub_parameters.short_taskName);
-	xputs(ip_string);
-	xputs(params_load);
-	if (res == FR_OK) {
-		xputs(params_loaded);
-	} else {
-		xputs(params_not_loaded);
+	/* got here - initialize context */
 
-		res = DeleteFile(&Media0, MQP_IP_cfg.file_name);
-		res = SaveIPConfigFileNew(&Media0, &MQP_IP_cfg);
-		if (res != FR_OK) {
-			xputs(error_saving);
-			xputs(MQTT_pub_parameters.short_taskName);
-			xputs(cfg_file);
-		}
-		need_reboot = true;
-	}
-
-	i_am_alive(PUB_TASK_MAGIC);
-
-	const size_t btr = sizeof(struct MQTT_topic_para);
-	size_t br = 0U;
-
-	res = ReadBytes(&Media0,
-			(const char *)&MQTT_pub_parameters.MQTT_topic_filename,
-			0U, btr, &br, (uint8_t *)&MQTT_pub_working_set);
-	xputs(MQTT_pub_parameters.short_taskName);
-	xputs(topic_string);
-	xputs(params_load);
-	if ((res == FR_OK) && (btr == br)) {
-		xputs(params_loaded);
-	} else {
-		xputs(params_not_loaded);
-		res = DeleteFile(
-			&Media0,
-			(const char *)&MQTT_pub_parameters.MQTT_topic_filename);
-		res = WriteBytes(
-			&Media0,
-			(const char *)&MQTT_pub_parameters.MQTT_topic_filename,
-			0U, btr, &br,
-			(const uint8_t *)&MQTT_pub_parameters
-				.MQTT_topic_parameters);
-
-		if ((res != FR_OK) || (br != btr)) {
-			xputs(error_saving);
-			xputs(MQTT_pub_parameters.short_taskName);
-			xputs(cfg_file);
-		}
-		need_reboot = true;
-	}
-
-	if (need_reboot) {
-		messages_TaskInit_fail(MQTT_pub_parameters.long_taskName);
-		vTaskDelay(pdMS_TO_TICKS(500U));
-	} else {
-		messages_TaskInit_OK(MQTT_pub_parameters.long_taskName);
-		/* here call MQTT_SN init context */
-	}
 }
 
 /**

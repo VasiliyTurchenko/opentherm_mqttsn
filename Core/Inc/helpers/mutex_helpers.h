@@ -11,7 +11,7 @@
 
 #define TAKE_MUTEX(X) 	do { \
 				if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) { \
-					if (xSemaphoreTake((X), pdMS_TO_TICKS(10U)) != pdTRUE) { taskYIELD(); } \
+					xSemaphoreTake((X), pdMS_TO_TICKS(portMAX_DELAY)); \
 				} \
 			} while (0)
 

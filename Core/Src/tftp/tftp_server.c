@@ -609,7 +609,20 @@ static void TFTP_Open_File(tftp_context_p context)
 	FRESULT res = FR_OK;
 	fMode_t req_mode;
 	req_mode = (context->OpCode == TFTP_RRQ) ? FModeRead : FModeWrite;
-	res = NewFile(&context->file, context->FileName, 0U, req_mode);
+
+	do {
+		res = NewFile(&context->file, context->FileName, 0U, req_mode);
+		if (res == FR_TOO_MANY_OPEN_FILES) {
+			if (xTaskGetSchedulerState() !=
+			    taskSCHEDULER_NOT_STARTED) {
+				vTaskDelay(pdMS_TO_TICKS(10U));
+			} else {
+				break;
+			}
+		} else {
+			break;
+		}
+	} while (1);
 
 	if (res != FR_OK) {
 		context->ErrCode = TFTP_ERROR_FILE_NOT_FOUND;

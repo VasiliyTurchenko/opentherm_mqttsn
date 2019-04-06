@@ -78,9 +78,9 @@ void logger_task_init(void)
 		}
 		messages_TaskInit_OK(task_name);
 		xputs("Switching logging to UDP.\n");
-		taskENTER_CRITICAL();
+//		taskENTER_CRITICAL();
 
-		taskEXIT_CRITICAL();
+//		taskEXIT_CRITICAL();
 		xputs(task_name);
 		xputs(" switched to UDP.\n");
 		i_am_alive(LOGGER_TASK_MAGIC);

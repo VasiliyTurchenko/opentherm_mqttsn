@@ -1,4 +1,4 @@
-/** @file tiny-fs.c
+﻿/** @file tiny-fs.c
  *  @brief Tiny filesystem
  *
  *  @author turchenkov@gmail.com
@@ -70,7 +70,7 @@ static size_t inline addr2Cluster(uint32_t addr);
 static ErrorStatus inline toggleClusters(uint8_t *clusterTable, size_t by,
 					 size_t bi, size_t reqClusters);
 NDEBUG_STATIC size_t FindFreeSlot(const Media_Desc_t* const media);
-NDEBUG_STATIC size_t SaveDirEntry(const Media_Desc_p media, size_t entryIndex,
+NDEBUG_STATIC size_t SaveDirEntry(const Media_Desc_t* media, size_t entryIndex,
 				  const DIR_Entry_p entry);
 
 NDEBUG_STATIC void decodeFName(const char *name[MAX_FILENAME_LEN], char *sname);
@@ -83,7 +83,7 @@ NDEBUG_STATIC ErrorStatus freeClusters(uint8_t *clusterTable,
 
 NDEBUG_STATIC ErrorStatus readFAT(const Media_Desc_t * const media, uint8_t *buf);
 
-NDEBUG_STATIC ErrorStatus writeFAT(const Media_Desc_p media, uint8_t *buf);
+NDEBUG_STATIC ErrorStatus writeFAT(const Media_Desc_t * media, uint8_t *buf);
 
 NDEBUG_STATIC FRESULT isFileValid(FIL *fp);
 NDEBUG_STATIC bool isPtrValid(const void *p);
@@ -212,7 +212,7 @@ ErrorStatus Format(const Media_Desc_t * const media)
 		goto fExit;
 	}
 	/* initialize cluster table */
-	const size_t clusterTableSize = getClusterTableSize(media);
+	size_t clusterTableSize = getClusterTableSize(media);
 #ifdef DEBUG
 #ifndef SILENT
 	const size_t numClusters = getNumClusters(media);
@@ -252,7 +252,7 @@ ErrorStatus Format(const Media_Desc_t * const media)
 #ifndef MCU_TARGET
 		exit(-1);
 #else
-		clusterTableSize > FS_DTA_SIZE;
+		clusterTableSize = FS_DTA_SIZE;
 #endif
 	}
 
@@ -950,7 +950,7 @@ NDEBUG_STATIC size_t FindFreeSlot(const Media_Desc_t* const media)
  * @param entry the entry to save
  * @return entryIndex if all is OK, UINT32_MAX otherwise
  */
-NDEBUG_STATIC size_t SaveDirEntry(const Media_Desc_p media, size_t entryIndex,
+NDEBUG_STATIC size_t SaveDirEntry(const Media_Desc_t * media, size_t entryIndex,
 				  const DIR_Entry_p entry)
 {
 	/* the func is static, so do not check pointers against NULL */
@@ -1059,7 +1059,7 @@ NDEBUG_STATIC ErrorStatus readFAT(const Media_Desc_t * const media, uint8_t *buf
  * @param buf
  * @return ERROR or SUCCESS
  */
-NDEBUG_STATIC ErrorStatus writeFAT(const Media_Desc_p media, uint8_t *buf)
+NDEBUG_STATIC ErrorStatus writeFAT(const Media_Desc_t * media, uint8_t *buf)
 {
 	/* the func is static, so do not check pointers against NULL */
 	ErrorStatus retVal;
