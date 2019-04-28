@@ -6,6 +6,8 @@
  *  @date 10-03-2019
  */
 
+#include <limits.h>
+
 #include "watchdog.h"
 #include "lan.h"
 #include "xprintf.h"
@@ -20,10 +22,18 @@
 
 #include "mqtt_config_helper.h"
 
+#include "manchester_task.h"
+
 //#include "MQTT_SN_task.h"
 
 
 extern const Media_Desc_t Media0;
+
+extern osThreadId SubscrbTaskHandle;
+
+TaskHandle_t TaskToNotify_afterTx;
+
+extern osThreadId ManchTaskHandle;
 
 /* all in the one */
 static const struct MQTT_parameters MQTT_sub_parameters = {
@@ -70,6 +80,8 @@ void subscribe_task_init(void)
 			&MQTT_sub_working_set, &MQS_IP_cfg);
 
 	/* got here - initialize context */
+	TaskToNotify_afterTx = SubscrbTaskHandle;
+
 
 }
 
@@ -78,5 +90,33 @@ void subscribe_task_init(void)
  */
 void subscribe_task_run(void)
 {
+	static uint32_t data = 0U;
+	static uint32_t notif_val = 0U;
+
 	i_am_alive(SUB_TASK_MAGIC);
+
+	*(uint32_t*)(&Tx_buf[0]) = data;
+/*
+BaseType_t xTaskNotify( TaskHandle_t xTaskToNotify,
+			 uint32_t ulValue,
+			 eNotifyAction eAction );
+*/
+
+	xTaskNotify(ManchTaskHandle,
+	MANCHESTER_TRANSMIT_NOTIFY,
+	eSetValueWithOverwrite);
+
+	if (xTaskNotifyWait(0x00U,
+			    ULONG_MAX,
+			    &notif_val,
+			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
+	    xputs("sub task: got notification ");
+	    if (notif_val == 0U) {
+		xputs("manch. tx ERR\n");
+	    } else {
+		xputs("manch. tx OK\n");
+		data++;
+		}
+	    }
+
 }

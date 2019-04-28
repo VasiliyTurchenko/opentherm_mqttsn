@@ -167,11 +167,11 @@ static TimerCfg_t timerCfgData[] = {
 		 TIM_AUTORELOAD_PRELOAD_ENABLE,
 	  .CR2 = TIM_TRGO_RESET,
 	  .SMCR = 0u,
-	  .PSC = 71u,
+	  .PSC = 8u, // 71u,
 	  .CCER = 0u,
 	  .ARR = 65535u,
 	  .state = HAL_TIM_STATE_READY,
-	  .NeedMSPInit = 1 }, // GPIO input pin samlping
+	  .NeedMSPInit = 1 },
 
 	/* trigger mode */
 	{ .CCMR1 = TIM_ICSELECTION_DIRECTTI | TIM_ICPSC_DIV1 | (12U << 4U),
@@ -199,6 +199,8 @@ static TimerCfg_t timerCfgData[] = {
 
 };
 
+
+#if(0)
 /**
  * @brief MANCHESTER_DebugLEDToggle
  */
@@ -219,6 +221,8 @@ void MANCHESTER_DebugLED6Toggle(void)
 	HAL_GPIO_TogglePin(LD6_GPIO_Port, LD6_Pin);
 #endif
 }
+#endif
+
 
 /**
  ************** CONTEXT INITIALIZATION **************************
@@ -805,7 +809,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 		STROBE_1;
 		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 		uint32_t notification = 0x00u;
-		MANCHESTER_DebugLED6Toggle();
+//		MANCHESTER_DebugLED6Toggle();
 		xTaskNotifyFromISR(ManchTaskHandle, notification,
 				   eSetValueWithOverwrite,
 				   &xHigherPriorityTaskWoken);

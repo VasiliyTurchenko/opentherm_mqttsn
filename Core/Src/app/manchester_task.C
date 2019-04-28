@@ -32,9 +32,46 @@ uint8_t Rx_buf[4];
 uint8_t Tx_buf[4];
 
 /*extern */TaskHandle_t TaskToNotify_afterRx;
-/*extern */TaskHandle_t TaskToNotify_afterTx;
+extern TaskHandle_t TaskToNotify_afterTx;
+
+
+/* What to suspend */
+extern osThreadId LANPollTaskHandle;
+
+extern osThreadId PublishTaskHandle;
+
+extern osThreadId DiagPrTaskHandle;
+
+extern osThreadId ProcSPSTaskHandle;
+
+extern osThreadId SubscrbTaskHandle;
+
+extern osThreadId ServiceTaskHandle;
+
+static osThreadId * taskHandles [] = {&LANPollTaskHandle, &PublishTaskHandle, &DiagPrTaskHandle,
+					&ProcSPSTaskHandle, &SubscrbTaskHandle, &ServiceTaskHandle };
+static const size_t taskHandlesQty = sizeof (taskHandles) / sizeof (taskHandles[0]);
+
 
 static char *task_name = "manchester_task";
+
+/**
+ * @brief suspendAll suspends all the tasks
+ */
+static void suspendAll(void)
+{
+	for (size_t i = 0U; i < taskHandlesQty; i++) {
+		vTaskSuspend(*taskHandles[i]);
+	}
+}
+
+static void resumeAll(void)
+{
+	for (size_t i = 0U; i < taskHandlesQty; i++) {
+		vTaskResume(*taskHandles[i]);
+	}
+}
+
 
 /**
  * @brief manchester_task_init
@@ -47,7 +84,7 @@ void manchester_task_init(void)
 	messages_TaskInit_started(task_name);
 
 	ErrorStatus res;
-	res = MANCHESTER_InitContext(&manchester_context, &htim4, startBits,
+	res = MANCHESTER_InitContext(&manchester_context, &htim2, startBits,
 				     stopBits, bitRate, bitOrder, startStopBit);
 	if (res == ERROR) {
 		messages_TaskInit_fail(task_name);
@@ -76,7 +113,12 @@ void manchester_task_run(void)
 			manchester_Tx_data.numBits = 4 * CHAR_BIT;
 			manchester_Tx_data.numBitsActual = 0U;
 
+/* here we need to suspend all other tasks */
+//			suspendAll();
+
 			result = MANCHESTER_Transmit(&manchester_Tx_data, &manchester_context);
+
+//			resumeAll();
 
 			xputs(task_name);
 			xputs(" transmits\n");

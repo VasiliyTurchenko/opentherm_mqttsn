@@ -115,7 +115,7 @@ void Error_Handler(void);
 #define ESP_PWR_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
-#define MANCHESTER_Timer	htim4
+#define MANCHESTER_Timer	htim2
 
 /* USER CODE END Private defines */
 

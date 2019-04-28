@@ -7,9 +7,13 @@
 	#include "stm32f1xx_hal.h"
 #endif
 
-//#define MANCHESTER_DEBUG
+#define MANCHESTER_DEBUG
 
 #ifdef MANCHESTER_DEBUG
+
+#define TX_RX_STROBE_Pin GPIO_PIN_4
+#define TX_RX_STROBE_GPIO_Port GPIOA
+
 #define STROBE_1                                                               \
 	do {                                                                   \
 		HAL_GPIO_WritePin(TX_RX_STROBE_GPIO_Port, TX_RX_STROBE_Pin,    \

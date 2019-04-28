@@ -82,8 +82,8 @@ extern RTC_HandleTypeDef hrtc;
 extern DMA_HandleTypeDef hdma_spi2_tx;
 extern DMA_HandleTypeDef hdma_spi2_rx;
 extern SPI_HandleTypeDef hspi2;
-extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim4;
+extern TIM_HandleTypeDef htim2;
 extern DMA_HandleTypeDef hdma_usart3_rx;
 extern DMA_HandleTypeDef hdma_usart3_tx;
 extern UART_HandleTypeDef huart3;
@@ -293,6 +293,16 @@ void TIM1_UP_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM1_UP_IRQn 0 */
 
+  if(__HAL_TIM_GET_FLAG(&htim1, TIM_FLAG_UPDATE) != RESET)
+  {
+    if(__HAL_TIM_GET_IT_SOURCE(&htim1, TIM_IT_UPDATE) !=RESET)
+    {
+      __HAL_TIM_CLEAR_IT(&htim1, TIM_IT_UPDATE);
+      HAL_TIM_PeriodElapsedCallback(&htim1);
+      return;
+    }
+  }
+
   /* USER CODE END TIM1_UP_IRQn 0 */
   HAL_TIM_IRQHandler(&htim1);
   /* USER CODE BEGIN TIM1_UP_IRQn 1 */
@@ -306,9 +316,9 @@ void TIM1_UP_IRQHandler(void)
 void TIM2_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM2_IRQn 0 */
-
+	MANCHESTER_TimerISR();
   /* USER CODE END TIM2_IRQn 0 */
-  HAL_TIM_IRQHandler(&htim2);
+
   /* USER CODE BEGIN TIM2_IRQn 1 */
 
   /* USER CODE END TIM2_IRQn 1 */
@@ -320,9 +330,9 @@ void TIM2_IRQHandler(void)
 void TIM4_IRQHandler(void)
 {
   /* USER CODE BEGIN TIM4_IRQn 0 */
-	MANCHESTER_TimerISR();
+
   /* USER CODE END TIM4_IRQn 0 */
-//  HAL_TIM_IRQHandler(&htim4);
+	HAL_TIM_IRQHandler(&htim4);
   /* USER CODE BEGIN TIM4_IRQn 1 */
 
   /* USER CODE END TIM4_IRQn 1 */

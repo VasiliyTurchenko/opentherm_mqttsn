@@ -294,7 +294,7 @@ void MX_FREERTOS_Init(void)
 	CRC_MutexHandle = osMutexCreate(osMutex(CRC_Mutex));
 
 	osMutexStaticDef(ManchesterTimer01Mutex, &ManchesterTimer01Mutex_ControlBlock);
-	CRC_MutexHandle = osMutexCreate(osMutex(ManchesterTimer01Mutex));
+	ManchesterTimer01MutexHandle = osMutexCreate(osMutex(ManchesterTimer01Mutex));
 
 	/* USER CODE END RTOS_MUTEX */
 
@@ -339,7 +339,7 @@ void MX_FREERTOS_Init(void)
 	ServiceTaskHandle = osThreadCreate(osThread(ServiceTask), NULL);
 
 	/* definition and creation of ManchTask */
-	osThreadStaticDef(ManchTask, Start_ManchTask, osPriorityAboveNormal, 0,
+	osThreadStaticDef(ManchTask, Start_ManchTask, osPriorityRealtime, 0,
 			  128, ManchTaskBuffer, &ManchTaskControlBlock);
 	ManchTaskHandle = osThreadCreate(osThread(ManchTask), NULL);
 
@@ -560,7 +560,7 @@ void Start_ManchTask(void const *argument)
 	/* Infinite loop */
 	for (;;) {
 		manchester_task_run();
-		osDelay(1);
+		osDelay(500);
 	}
 	/* USER CODE END Start_ManchTask */
 }

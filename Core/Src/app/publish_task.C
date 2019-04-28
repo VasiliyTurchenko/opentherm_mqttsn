@@ -83,4 +83,6 @@ void publish_task_run(void)
 	HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
 	HAL_GPIO_TogglePin(ESP_PWR_GPIO_Port, ESP_PWR_Pin);
 	osDelay(100U);
+
+
 }
