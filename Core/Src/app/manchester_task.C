@@ -34,6 +34,7 @@ uint8_t Tx_buf[4];
 extern TaskHandle_t TaskToNotify_afterRx;
 extern TaskHandle_t TaskToNotify_afterTx;
 
+#if (0)
 /* What to suspend */
 extern osThreadId LANPollTaskHandle;
 
@@ -52,7 +53,7 @@ static osThreadId * taskHandles [] = {&LANPollTaskHandle, &PublishTaskHandle, &D
 static const size_t taskHandlesQty = sizeof (taskHandles) / sizeof (taskHandles[0]);
 
 
-static char *task_name = "manchester_task";
+
 
 /**
  * @brief suspendAll suspends all the tasks
@@ -70,6 +71,9 @@ static void resumeAll(void)
 		vTaskResume(*taskHandles[i]);
 	}
 }
+#endif
+
+static char *task_name = "manchester_task";
 
 /**
  * @brief manchester_task_init
@@ -108,7 +112,6 @@ void manchester_task_run(void)
 	    pdTRUE) {
 
 
-
 		if (notif_val == MANCHESTER_TRANSMIT_NOTIFY) {
 			manchester_Tx_data.dataPtr = Tx_buf;
 			manchester_Tx_data.numBits = 4 * CHAR_BIT;
@@ -119,7 +122,7 @@ void manchester_task_run(void)
 
 
 			xputs(task_name);
-			xputs(" transmits\n");
+			xputs(" TX>>\n");
 
 			xTaskNotify(TaskToNotify_afterTx, (uint32_t)result ,eSetValueWithOverwrite);
 
@@ -131,14 +134,11 @@ void manchester_task_run(void)
 
 			result = MANCHESTER_Receive(&manchester_Rx_data, &manchester_context);
 
-//			xputs(task_name);
-//			xputs(" receives\n");
-
 			xTaskNotify(TaskToNotify_afterRx, (uint32_t)result, eSetValueWithOverwrite);
 
 		} else {
 			xputs(task_name);
-			xputs(" got bad notification value\n");
+			xprintf(" bad notif. value %d\n", notif_val);
 		}
 	} else {
 		xputs(task_name);

@@ -101,11 +101,11 @@ void subscribe_task_run(void)
 
 	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
 			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
-		xputs("sub task: got notification ");
+		xputs("sub task: got notification tx ");
 		if (notif_val == 0U) {
-			xputs("manch. tx ERR\n");
+			xputs("ERR\n");
 		} else {
-			xputs("manch. tx OK\n");
+			xputs("OK\n");
 			data++;
 		}
 	}
@@ -120,13 +120,13 @@ void subscribe_task_run(void)
 	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
 			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
 
-		xputs("sub task: got notification ");
+		xputs("sub task:notif. rx");
 		if (notif_val == 0U) {
-			xputs("manch. rx ERR\n");
+			xputs(" ERR\n");
 			vTaskDelay(pdMS_TO_TICKS(800U));
 
 		} else {
-			xputs("manch. rx OK\n");
+			xputs(" OK. ");
 			xprintf("Received: %d\n", *(uint32_t *)(&Rx_buf[0]));
 		}
 	}
@@ -147,6 +147,8 @@ void subscribe_task_run(void)
 
 	*(uint32_t *)(&Rx_buf[0]) = 0U;
 
+	xTaskNotifyStateClear(ManchTaskHandle);
+
 	xTaskNotify(ManchTaskHandle, MANCHESTER_RECEIVE_NOTIFY,
 		    eSetValueWithOverwrite);
 
@@ -158,7 +160,7 @@ void subscribe_task_run(void)
 			goto fExit;
 
 		} else {
-			xputs("sub task: got notification manch. rx OK\n");
+			xputs("\nsub task: notif. rx OK. ");
 			xprintf("Received: %d\n", *(uint32_t *)(&Rx_buf[0]));
 		}
 	} else {
@@ -168,17 +170,20 @@ void subscribe_task_run(void)
 	*(uint32_t *)(&Tx_buf[0]) = *(uint32_t *)(&Rx_buf[0]);
 
 	vTaskDelay(pdMS_TO_TICKS(500U));
+
+	xTaskNotifyStateClear(ManchTaskHandle);
+
 	taskENTER_CRITICAL();
 	xTaskNotify(ManchTaskHandle, MANCHESTER_TRANSMIT_NOTIFY,
 		    eSetValueWithOverwrite);
 	taskEXIT_CRITICAL();
 	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
 			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
-		xputs("sub task: got notification ");
+		xputs("sub task: notif. tx ");
 		if (notif_val == 0U) {
-			xputs("manch. tx ERR\n");
+			xputs("ERR\n");
 		} else {
-			xputs("manch. tx OK\n");
+			xputs("OK\n");
 			data++;
 		}
 	}

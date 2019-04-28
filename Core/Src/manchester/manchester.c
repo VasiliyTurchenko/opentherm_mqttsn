@@ -312,7 +312,9 @@ ErrorStatus MANCHESTER_Receive(MANCHESTER_Data_t *data,
 
 fExit:
 	HAL_NVIC_DisableIRQ(EXTI0_IRQn);
+	context->htim->Instance->DIER = 0U;
 	configTimer(context->htim, 0x00u);
+	xTaskNotifyStateClear(ManchTaskHandle);
 	/* Give MUTEX */
 	if (mut != 0) {
 		/* Decide if rtos has already started */
