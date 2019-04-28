@@ -103,6 +103,14 @@ void MX_FREERTOS_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+#if defined(MASTERBOARD)
+const char * id = "MASTER";
+#endif
+
+#if defined(SLAVEBOARD)
+const char * id = "SLAVE";
+#endif
+
 /* USER CODE END 0 */
 
 /**

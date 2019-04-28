@@ -560,7 +560,7 @@ void Start_ManchTask(void const *argument)
 	/* Infinite loop */
 	for (;;) {
 		manchester_task_run();
-		osDelay(500);
+		vTaskDelay(pdMS_TO_TICKS(10U));
 	}
 	/* USER CODE END Start_ManchTask */
 }

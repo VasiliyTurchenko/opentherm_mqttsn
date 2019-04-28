@@ -31,9 +31,8 @@ static MANCHESTER_Data_t manchester_Tx_data;
 uint8_t Rx_buf[4];
 uint8_t Tx_buf[4];
 
-/*extern */TaskHandle_t TaskToNotify_afterRx;
+extern TaskHandle_t TaskToNotify_afterRx;
 extern TaskHandle_t TaskToNotify_afterTx;
-
 
 /* What to suspend */
 extern osThreadId LANPollTaskHandle;
@@ -72,7 +71,6 @@ static void resumeAll(void)
 	}
 }
 
-
 /**
  * @brief manchester_task_init
  */
@@ -101,24 +99,24 @@ void manchester_task_init(void)
 void manchester_task_run(void)
 {
 	i_am_alive(MANCHESTER_TASK_MAGIC);
-	static uint32_t notif_val = 0U;
+	uint32_t notif_val = 0U;
 
 	ErrorStatus result = ERROR;
 
 
-	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val, pdMS_TO_TICKS(1000U)) ==
+	if (xTaskNotifyWait(ULONG_MAX, ULONG_MAX, &notif_val, pdMS_TO_TICKS(1000U)) ==
 	    pdTRUE) {
+
+
+
 		if (notif_val == MANCHESTER_TRANSMIT_NOTIFY) {
 			manchester_Tx_data.dataPtr = Tx_buf;
 			manchester_Tx_data.numBits = 4 * CHAR_BIT;
 			manchester_Tx_data.numBitsActual = 0U;
 
-/* here we need to suspend all other tasks */
-//			suspendAll();
 
 			result = MANCHESTER_Transmit(&manchester_Tx_data, &manchester_context);
 
-//			resumeAll();
 
 			xputs(task_name);
 			xputs(" transmits\n");
@@ -133,8 +131,8 @@ void manchester_task_run(void)
 
 			result = MANCHESTER_Receive(&manchester_Rx_data, &manchester_context);
 
-			xputs(task_name);
-			xputs(" receives\n");
+//			xputs(task_name);
+//			xputs(" receives\n");
 
 			xTaskNotify(TaskToNotify_afterRx, (uint32_t)result, eSetValueWithOverwrite);
 

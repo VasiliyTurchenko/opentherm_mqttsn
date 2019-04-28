@@ -161,11 +161,11 @@ void service_task_run(void)
 	i_am_alive(SERVICE_TASK_MAGIC);
 
 	HAL_GPIO_TogglePin(YELLOW_LED_GPIO_Port, YELLOW_LED_Pin);
-	HAL_GPIO_TogglePin(ESP_RESET_GPIO_Port, ESP_RESET_Pin);
+//	HAL_GPIO_TogglePin(ESP_RESET_GPIO_Port, ESP_RESET_Pin);
 	osDelay(500U);
 	xputs("ping-");
 	HAL_GPIO_TogglePin(YELLOW_LED_GPIO_Port, YELLOW_LED_Pin);
-	HAL_GPIO_TogglePin(ESP_RESET_GPIO_Port, ESP_RESET_Pin);
+//	HAL_GPIO_TogglePin(ESP_RESET_GPIO_Port, ESP_RESET_Pin);
 	osDelay(500U);
 	xputs("pong\n");
 

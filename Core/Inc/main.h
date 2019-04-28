@@ -91,6 +91,9 @@ void Error_Handler(void);
 #define IWDG_timeout 6554
 #define MANCHESTER_RX_Pin GPIO_PIN_0
 #define MANCHESTER_RX_GPIO_Port GPIOA
+
+#define MANCHESTER_RX_EXTI_IRQn EXTI0_IRQn
+
 #define GREEN_LED_Pin GPIO_PIN_1
 #define GREEN_LED_GPIO_Port GPIOA
 #define MANCHESTER_TX_Pin GPIO_PIN_2

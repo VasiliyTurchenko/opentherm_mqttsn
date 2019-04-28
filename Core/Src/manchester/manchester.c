@@ -105,7 +105,8 @@ uint8_t RecvState;
 
 /* array of timer configurations used when receiving packet */
 static TimerCfg_t timerCfgData[] = {
-	{ .CCMR1 = 0u,
+
+/* 0 */	{ .CCMR1 = 0u,
 	  .CR1 = 0u,
 	  .CR2 = 0u,
 	  .SMCR = 0u,
@@ -115,78 +116,30 @@ static TimerCfg_t timerCfgData[] = {
 	  .state = HAL_TIM_STATE_RESET,
 	  .NeedMSPInit = 0 }, // default
 
-	/* wait for 1st rising edge */
-	{ .CCMR1 = TIM_ICSELECTION_DIRECTTI | TIM_ICPSC_DIV1 | (12U << 4U),
-	  .CR1 = TIM_CLOCKDIVISION_DIV4 | TIM_COUNTERMODE_UP |
-		 TIM_AUTORELOAD_PRELOAD_DISABLE,
-	  .CR2 = TIM_TRGO_RESET,
-	  .SMCR = TIM_SLAVEMODE_EXTERNAL1 | TIM_TS_TI1FP1,
-	  .PSC = 71u,
-	  .CCER = TIM_INPUTCHANNELPOLARITY_RISING,
-	  .ARR = 1u,
-	  .state = HAL_TIM_STATE_READY,
-	  .NeedMSPInit = 1 },
+/* 1 */ { 0,0,0,0,0,0,0,0,0},
 
-	{ .CCMR1 = TIM_ICSELECTION_DIRECTTI | TIM_ICPSC_DIV1 | (12U << 4U),
-	  .CR1 = TIM_CLOCKDIVISION_DIV4 | TIM_COUNTERMODE_UP |
-		 TIM_AUTORELOAD_PRELOAD_DISABLE,
-	  .CR2 = TIM_TRGO_RESET,
-	  .SMCR = 0u,
-	  .PSC = 71u,
-	  .CCER = TIM_INPUTCHANNELPOLARITY_FALLING | TIM_CCER_CC1E,
-	  .ARR = 65535u,
-	  .state = HAL_TIM_STATE_READY,
-	  .NeedMSPInit = 0 }, // measure first pulse
+/* 2 */	{ 0,0,0,0,0,0,0,0,0},
 
-	{ .CCMR1 = 0u,
-	  .CR1 = TIM_CLOCKDIVISION_DIV1 | TIM_COUNTERMODE_DOWN |
-		 TIM_AUTORELOAD_PRELOAD_ENABLE,
-	  .CR2 = TIM_TRGO_RESET,
-	  .SMCR = 0u,
-	  .PSC = 71u,
-	  .CCER = 0u,
-	  .ARR = 65535u,
-	  .state = HAL_TIM_STATE_READY,
-	  .NeedMSPInit = 0 }, // GPIO input pin samlping
+/* 3 */	{ 0,0,0,0,0,0,0,0,0},
 
-	/* gated mode */
-	{ .CCMR1 = TIM_ICSELECTION_DIRECTTI | TIM_ICPSC_DIV1 | (12U << 4U),
-	  .CR1 = TIM_CLOCKDIVISION_DIV4 | TIM_COUNTERMODE_UP |
-		 TIM_AUTORELOAD_PRELOAD_DISABLE,
-	  .CR2 = TIM_TRGO_RESET,
-	  .SMCR = TIM_SLAVEMODE_GATED | TIM_TS_TI1FP1,
-	  .PSC = 71u,
-	  .CCER = TIM_INPUTCHANNELPOLARITY_RISING | TIM_CCER_CC1E,
-	  .ARR = 65535u,
-	  .state = HAL_TIM_STATE_READY,
-	  .NeedMSPInit = 1 }, // measure first pulse
+/* 4 */	{ 0,0,0,0,0,0,0,0,0},
 
 	/* for transmit */
-	{ .CCMR1 = 0u,
+/* 5 */	{ .CCMR1 = 0u,
 	  .CR1 = TIM_CLOCKDIVISION_DIV1 | TIM_COUNTERMODE_DOWN |
 		 TIM_AUTORELOAD_PRELOAD_ENABLE,
 	  .CR2 = TIM_TRGO_RESET,
 	  .SMCR = 0u,
-	  .PSC = 8u, // 71u,
+	  .PSC = 71u,
 	  .CCER = 0u,
 	  .ARR = 65535u,
 	  .state = HAL_TIM_STATE_READY,
 	  .NeedMSPInit = 1 },
 
-	/* trigger mode */
-	{ .CCMR1 = TIM_ICSELECTION_DIRECTTI | TIM_ICPSC_DIV1 | (12U << 4U),
-	  .CR1 = TIM_CLOCKDIVISION_DIV4 | TIM_COUNTERMODE_UP |
-		 TIM_AUTORELOAD_PRELOAD_DISABLE,
-	  .CR2 = TIM_TRGO_RESET,
-	  .SMCR = TIM_SLAVEMODE_TRIGGER | TIM_TS_TI1FP1,
-	  .PSC = 71u,
-	  .CCER = TIM_INPUTCHANNELPOLARITY_RISING | TIM_CCER_CC1E,
-	  .ARR = 65535u,
-	  .state = HAL_TIM_STATE_READY,
-	  .NeedMSPInit = 1 }, // measure first pulse
+/* 6 */	{ 0,0,0,0,0,0,0,0,0},
 
 	/* for receiving using EXTI */
-	{ .CCMR1 = 0u,
+/* 7 */	{ .CCMR1 = 0u,
 	  .CR1 = TIM_CLOCKDIVISION_DIV1 | TIM_COUNTERMODE_UP |
 		 TIM_AUTORELOAD_PRELOAD_ENABLE,
 	  .CR2 = TIM_TRGO_RESET,
@@ -302,6 +255,7 @@ volatile static size_t mr_err;
 ErrorStatus MANCHESTER_Receive(MANCHESTER_Data_t *data,
 			       MANCHESTER_Context_t *context)
 {
+	STROBE_1;
 	pulses.low = 0x00u;
 	pulses.high = 0x00u;
 	pulses.hasLow1T = 0x00u;
@@ -309,13 +263,15 @@ ErrorStatus MANCHESTER_Receive(MANCHESTER_Data_t *data,
 	BitQueue_t qu = { 0x00U, 0x00U };
 	RecvState = 0x01U;
 
+	xTaskNotifyStateClear(ManchTaskHandle);
+
 #ifdef MANCHESTER_DEBUG
 	bits_received = 0x00u;
 	mr_err = 0x00u;
 #endif
 	/* FREERTOS mutex*/
 	BaseType_t mut = 0;
-	STROBE_0;
+
 	if ((data == NULL) || (context == NULL)) {
 		return ERROR;
 	}
@@ -355,8 +311,7 @@ ErrorStatus MANCHESTER_Receive(MANCHESTER_Data_t *data,
 	retVal = SUCCESS;
 
 fExit:
-	HAL_NVIC_DisableIRQ(
-		EXTI15_10_IRQn); // diasble GPIO_EXTI12 interrupt pin
+	HAL_NVIC_DisableIRQ(EXTI0_IRQn);
 	configTimer(context->htim, 0x00u);
 	/* Give MUTEX */
 	if (mut != 0) {
@@ -414,7 +369,7 @@ fExit:
  */
 #ifdef MANCHESTER_DEBUG
 volatile static size_t pr_err;
-#define PR_ERR_LINE pr_err = __LINE__
+#define PR_ERR_LINE do {pr_err = __LINE__; STROBE_0;} while(0)
 #else
 #define PR_ERR_LINE
 #endif
@@ -429,12 +384,6 @@ ErrorStatus prepareRx(MANCHESTER_Context_t *const context)
 	context->t0 = 0x00U;
 	highCntValue = 0x00u;
 	configTimer(context->htim, 0x07u);
-	context->htim->Instance->CNT = 0x00u;
-	context->htim->Instance->EGR = TIM_EGR_UG;
-	context->htim->Instance->SR = 0x00u;
-	context->htim->Instance->DIER =
-		context->htim->Instance->DIER | TIM_DIER_UIE;
-	context->htim->Instance->CR1 |= 0x01u;
 
 	BaseType_t xResult;
 	uint32_t ulNotifiedValue;
@@ -445,12 +394,14 @@ ErrorStatus prepareRx(MANCHESTER_Context_t *const context)
 	}
 
 	__HAL_GPIO_EXTI_CLEAR_IT(
-		MANCHESTER_RX_Pin); //	enable GPIO_EXTI12 interrupt pin
-	HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+		MANCHESTER_RX_Pin);
+	HAL_NVIC_EnableIRQ(EXTI0_IRQn);
 
 	/* wait for 1st rising edge */
+
 	xResult = xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue,
 				  pdMS_TO_TICKS(WAIT_FOR_START_MAX_MS));
+	STROBE_0;
 	if (xResult != pdPASS) {
 		PR_ERR_LINE;
 		goto fExit;
@@ -460,10 +411,19 @@ ErrorStatus prepareRx(MANCHESTER_Context_t *const context)
 		PR_ERR_LINE;
 		goto fExit;
 	}
+	{
+		context->htim->Instance->CNT = 0x00u;
+		context->htim->Instance->EGR = TIM_EGR_UG;
+		context->htim->Instance->SR = 0x00u;
+		context->htim->Instance->DIER = context->htim->Instance->DIER | TIM_DIER_UIE;
+		context->htim->Instance->CR1 |= 0x01u;
+
+	}
 	context->t0 =
 		context->htim->Instance->CNT + (uint32_t)(highCntValue << 16U);
+
+retval = SUCCESS;
 fExit:
-	retval = SUCCESS;
 	return retval;
 }
 
@@ -475,7 +435,8 @@ fExit:
  */
 #ifdef MANCHESTER_DEBUG
 volatile static uint32_t rb_err;
-#define RB_ERR_LINE rb_err = __LINE__
+#define RB_ERR_LINE do {rb_err = __LINE__; STROBE_0;} while(0)
+
 #else
 #define RB_ERR_LINE
 #endif
@@ -485,6 +446,7 @@ ErrorStatus receiveBits(MANCHESTER_Context_t *context, BitQueue_t *qu)
 #ifdef MANCHESTER_DEBUG
 	rb_err = 0x00u;
 #endif
+
 	ErrorStatus retVal = ERROR;
 	BaseType_t xResult;
 	uint32_t ulNotifiedValue;
@@ -496,6 +458,7 @@ ErrorStatus receiveBits(MANCHESTER_Context_t *context, BitQueue_t *qu)
 		RB_ERR_LINE;
 		goto fExit;
 	}
+
 	xResult =
 		xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, timeOut);
 	if (xResult != pdPASS) {
@@ -507,6 +470,7 @@ ErrorStatus receiveBits(MANCHESTER_Context_t *context, BitQueue_t *qu)
 		RB_ERR_LINE;
 		goto fExit;
 	}
+
 	uint32_t t1 = htim->Instance->CNT + (uint32_t)(highCntValue << 16U);
 	pulses.high = t1 - context->t0;
 	xResult =
@@ -540,6 +504,7 @@ ErrorStatus receiveBits(MANCHESTER_Context_t *context, BitQueue_t *qu)
 		}
 	}
 fExit:
+
 	return retVal;
 }
 
@@ -552,7 +517,7 @@ fExit:
  */
 #ifdef MANCHESTER_DEBUG
 volatile static uint32_t pp_err;
-#define PP_ERR_LINE pp_err = __LINE__
+#define PP_ERR_LINE do {pp_err = __LINE__; STROBE_0;} while(0)
 #else
 #define PP_ERR_LINE
 #endif
@@ -635,7 +600,7 @@ fExit:
  */
 #ifdef MANCHESTER_DEBUG
 volatile static uint32_t psb_err;
-#define PSB_ERR_LINE psb_err = __LINE__
+#define PSB_ERR_LINE do {psb_err = __LINE__; STROBE_0;} while(0)
 #else
 #define PSB_ERR_LINE
 #endif
@@ -681,7 +646,7 @@ ErrorStatus processStartStopBits(size_t nBits,
 
 #ifdef MANCHESTER_DEBUG
 volatile static uint32_t ppl_err;
-#define PPL_ERR_LINE ppl_err = __LINE__
+#define PPL_ERR_LINE do {ppl_err = __LINE__; STROBE_0;} while(0)
 #else
 #define PPL_ERR_LINE
 #endif
@@ -806,14 +771,15 @@ static void configTimer(TIM_HandleTypeDef *htim, size_t stage)
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	if (GPIO_Pin == MANCHESTER_RX_Pin) {
-		STROBE_1;
+		STROBE_0;
 		BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 		uint32_t notification = 0x00u;
 //		MANCHESTER_DebugLED6Toggle();
+		STROBE_1;
 		xTaskNotifyFromISR(ManchTaskHandle, notification,
 				   eSetValueWithOverwrite,
 				   &xHigherPriorityTaskWoken);
-		STROBE_0;
+
 		portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 	}
 }
@@ -823,7 +789,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
  */
 
 /**
- * @brief MANCHESTER_Receive
+ * @brief MANCHESTER_Transmit
  * @param data pointer to data context
  * @param context pointer to conmmunication context
  * @return SUCCESS or ERROR
@@ -846,6 +812,8 @@ ErrorStatus MANCHESTER_Transmit(MANCHESTER_Data_t *data,
 		mut = xSemaphoreTake(ManchesterTimer01MutexHandle,
 				     portMAX_DELAY);
 	}
+
+	xTaskNotifyStateClear(ManchTaskHandle);
 
 	/* initialize timer hardware for transmission */
 	configTimer(htim, 5u);
@@ -1011,7 +979,7 @@ fExit:
  */
 void MANCHESTER_TimerISR(void)
 {
-	STROBE_1;
+//	STROBE_1;
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	uint32_t notification = UINT32_MAX;
 	/* TIM Trigger detection event */
@@ -1054,7 +1022,7 @@ fExit:
 			eSetValueWithOverwrite,
 			  &xHigherPriorityTaskWoken);
 			portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
-	STROBE_0;
+//	STROBE_0;
 	return;
 }
 

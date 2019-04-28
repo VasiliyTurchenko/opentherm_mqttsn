@@ -10,8 +10,8 @@
 #define MANCHESTER_TASK_H
 
 
-#define MANCHESTER_RECEIVE_NOTIFY	((uint32_t)1)
-#define MANCHESTER_TRANSMIT_NOTIFY	((uint32_t)2)
+#define MANCHESTER_RECEIVE_NOTIFY	((uint32_t)0x55)
+#define MANCHESTER_TRANSMIT_NOTIFY	((uint32_t)0xAA)
 
 
 extern uint8_t Rx_buf[4];

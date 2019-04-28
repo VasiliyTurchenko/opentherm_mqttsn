@@ -39,7 +39,7 @@
 
 #ifdef __cplusplus
  extern "C" {
-#endif 
+#endif
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -82,8 +82,9 @@ void I2C1_EV_IRQHandler(void);
 void I2C1_ER_IRQHandler(void);
 void SPI2_IRQHandler(void);
 void USART3_IRQHandler(void);
-/* USER CODE BEGIN EFP */
 
+/* USER CODE BEGIN EFP */
+void EXTI0_IRQHandler(void);
 /* USER CODE END EFP */
 
 #ifdef __cplusplus

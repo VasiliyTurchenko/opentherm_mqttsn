@@ -35,7 +35,7 @@
 /* size in bytes */
 //#define MANCHESTER_DTA_SIZE
 
-#define WAIT_FOR_START_MAX_MS 100u
+#define WAIT_FOR_START_MAX_MS (800u - 20u)
 #define HALF_BYTE_TOLERANCE 12u /* 1/12 = 8.333%*/
 
 #define MAX_NUM_START_BITS 16
