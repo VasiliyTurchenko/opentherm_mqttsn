@@ -32,7 +32,7 @@ elseif(TARGET_MASTER_MCU MATCHES "stm32f3")
 	set	(MASTER_STARTUP_CODE_SOURCE ${STARTUP_CODE_DIR}/startup_stm32f303xc.s)
 	SET	(MASTER_LDSCRIPT	${LINKER_SCRIPTS_DIR}/STM32F303VCTx_FLASH.ld)
 
-	SET	(MASTER_COMPILE_FLAGS -mcpu=cortex-m3 -mthumb -march=armv7-m -mfloat-abi=soft  -mno-thumb-interwork -v)
+	SET	(MASTER_COMPILE_FLAGS -mcpu=cortex-m4 -mthumb -march=armv7-m -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mno-thumb-interwork -v)
 
 else()
 
