@@ -122,10 +122,11 @@ int main(void)
 	/* USER CODE BEGIN 1 */
 /* fill the stack */
 
+#if(0)
 	for (size_t i = 0x200035dCU; i < 0x20003ad4U; i = i+4U) {
 		*(uint32_t*)i = 0xCAFEC001U;
 	}
-
+#endif
 	/* USER CODE END 1 */
 
 	/* MCU Configuration--------------------------------------------------------*/

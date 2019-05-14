@@ -24,6 +24,9 @@
 
 #include "manchester_task.h"
 
+
+#include "opentherm_wrappers.h"
+
 //#include "MQTT_SN_task.h"
 
 extern const Media_Desc_t Media0;
@@ -81,9 +84,26 @@ void subscribe_task_init(void)
 	/* got here - initialize context */
 	TaskToNotify_afterTx = SubscrbTaskHandle;
 	TaskToNotify_afterRx = SubscrbTaskHandle;
+
+/* code for slave */
+#ifdef SLAVEBOARD
+
+	xputs("OpenTherm initialization ");
+	if (OPENTHERM_InitSlave() != OPENTHERM_ResOK) {
+		xputs("error!\n");
+	} else {
+		xputs("OK.\n");
+	}
+
+/* code for master */
+#elif defined(MASTERBOARD)
+
+#else
+#error NEITHER SLAVEBOARD NOR MASTERBOARD IS DEFINED!
+#endif
 }
 
-#if defined (MASTERBOARD)
+#if defined(MASTERBOARD)
 /**
  * @brief subscribe_task_run
  */
@@ -119,7 +139,6 @@ void subscribe_task_run(void)
 
 	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
 			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
-
 		xputs("sub task:notif. rx");
 		if (notif_val == 0U) {
 			xputs(" ERR\n");
@@ -131,16 +150,16 @@ void subscribe_task_run(void)
 		}
 	}
 	vTaskDelay(pdMS_TO_TICKS(200U));
-
 }
 
 #endif
 
-#if defined (SLAVEBOARD)
+#if defined(SLAVEBOARD)
 
 void subscribe_task_run(void)
 {
 	static uint32_t data = 0U;
+
 	uint32_t notif_val = 0U;
 
 	i_am_alive(SUB_TASK_MAGIC);
@@ -154,9 +173,8 @@ void subscribe_task_run(void)
 
 	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
 			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
-
 		if (notif_val == 0U) {
-//			xputs("manch. rx ERR\n");
+			//			xputs("manch. rx ERR\n");
 			goto fExit;
 
 		} else {
@@ -191,7 +209,5 @@ void subscribe_task_run(void)
 fExit:
 	return;
 }
-
-
 
 #endif

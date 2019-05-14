@@ -172,6 +172,7 @@ __weak void vApplicationIdleHook(void)
    memory allocated by the kernel to any task that has since been deleted. */
 
 #ifdef DEBUG
+#if(0)
 	uint32_t * p;
 	size_t	i;
 
@@ -233,7 +234,7 @@ __weak void vApplicationIdleHook(void)
 	ManchTaskBuffer_depth = i;
 
 #endif
-
+#endif
 
 
 
@@ -348,6 +349,7 @@ void MX_FREERTOS_Init(void)
  * @todo ADD STACK DEPTH MONITOR
 */
 #ifdef DEBUG
+#if(0)
 	uint32_t * p;
 	size_t	i;
 
@@ -407,6 +409,7 @@ void MX_FREERTOS_Init(void)
 		i--;
 	}
 
+#endif
 #endif
 
 	/* USER CODE END RTOS_THREADS */

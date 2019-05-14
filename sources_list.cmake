@@ -22,6 +22,7 @@ set(GROUP_CORE_SRC_HELPERS
 		Core/Src/helpers/CRC32_helpers.c
 		Core/Src/helpers/messages.c
 		Core/Src/helpers/MQTT_config_helper.c
+		Core/Src/helpers/opentherm_wrappers.c
 )
 
 set(GROUP_CORE_SRC_LAN
@@ -83,7 +84,7 @@ set(GROUP_CORE_SRC
 		Core/Src/system_stm32f1xx.c
 		Core/Src/tim.c
 		Core/Src/usart.c
-		Core/Src/syscalls.c
+#		Core/Src/syscalls.c
 )
 
 set(GROUP_DRIVERS_STM32F1XX_HAL_DRIVER_SRC
