@@ -10,8 +10,21 @@
 
 #include <string.h>
 #include "enc28j60.h"
+
+#ifdef STM32F103xB
 #include "stm32f1xx_hal.h"
 #include "stm32f1xx_hal_def.h"
+#elif STM32F303xC
+#include "stm32f3xx_hal.h"
+#include "stm32f3xx_hal_def.h"
+
+#else
+
+#error "MCU TARGET NOT DEFINED!"
+
+#endif
+
+
 #include "main.h"
 
 /*

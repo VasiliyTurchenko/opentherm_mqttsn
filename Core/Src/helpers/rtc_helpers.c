@@ -11,7 +11,9 @@
 #include "rtc_helpers.h"
 
 RTC_TimeTypeDef	myRTC_Time;
+#ifdef STM32F103xB
 static HAL_StatusTypeDef RTC_EnterInitMode(RTC_HandleTypeDef* hrtc);
+#endif
 static HAL_StatusTypeDef RTC_ExitInitMode(RTC_HandleTypeDef* hrtc);
 
 void HAL_RTCEx_RTCEventCallback(RTC_HandleTypeDef *hrtc)
@@ -29,7 +31,7 @@ ErrorStatus SaveTimeToRTC(ptr_Time time_now)
 {
 	ErrorStatus	result;
 	result = ERROR;
-
+#ifdef STM32F103xB
 	/* Set Initialization mode */
 	if(RTC_EnterInitMode(&hrtc) != HAL_OK) {
 		goto fExit;
@@ -43,6 +45,7 @@ ErrorStatus SaveTimeToRTC(ptr_Time time_now)
 			result = SUCCESS;
 		}
 	}
+#endif
 fExit:
 	return result;
 }
@@ -67,7 +70,7 @@ ErrorStatus GetTimeFromRTC(ptr_Time time_now)
 	if (time_now == NULL) {
 		goto fExit;
 	}
-
+#ifdef STM32F103xB
 	high1 = READ_REG(hrtc.Instance->CNTH & RTC_CNTH_RTC_CNT);
 	low   = READ_REG(hrtc.Instance->CNTL & RTC_CNTL_RTC_CNT);
 	high2 = READ_REG(hrtc.Instance->CNTH & RTC_CNTH_RTC_CNT);
@@ -84,6 +87,7 @@ ErrorStatus GetTimeFromRTC(ptr_Time time_now)
 	time_now->Seconds = timecounter;
 	time_now->mSeconds = ( READ_REG(hrtc.Instance->DIVL & RTC_DIVL_RTC_DIV) / 33U );
 	result = SUCCESS;
+#endif
 fExit:
 	return result;
 }
@@ -94,6 +98,7 @@ fExit:
   *                the configuration information for RTC.
   * @retval HAL status
   */
+#ifdef STM32F103xB
 static HAL_StatusTypeDef RTC_EnterInitMode(RTC_HandleTypeDef* hrtc)
 {
   uint32_t tickstart = 0U;
@@ -114,6 +119,7 @@ static HAL_StatusTypeDef RTC_EnterInitMode(RTC_HandleTypeDef* hrtc)
 
   return HAL_OK;
 }
+#endif
 
 /**
   * @brief  Exit the RTC Initialization mode.
@@ -124,7 +130,7 @@ static HAL_StatusTypeDef RTC_EnterInitMode(RTC_HandleTypeDef* hrtc)
 static HAL_StatusTypeDef RTC_ExitInitMode(RTC_HandleTypeDef* hrtc)
 {
   uint32_t tickstart = 0U;
-
+#ifdef STM32F103xB
   /* Disable the write protection for RTC registers */
   __HAL_RTC_WRITEPROTECTION_ENABLE(hrtc);
 
@@ -137,6 +143,6 @@ static HAL_StatusTypeDef RTC_ExitInitMode(RTC_HandleTypeDef* hrtc)
       return HAL_TIMEOUT;
     }
   }
-
+#endif
   return HAL_OK;
 }

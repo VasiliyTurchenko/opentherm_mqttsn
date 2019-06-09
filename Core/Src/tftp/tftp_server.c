@@ -15,7 +15,16 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+#ifdef STM32F103xB
 #include "stm32f1xx.h"
+#elif STM32F303xC
+#include "stm32f3xx.h"
+#else
+
+#error "MCU TARGET NOT DEFINED!"
+
+#endif
+
 #include "xprintf.h"
 
 #include "lan.h"

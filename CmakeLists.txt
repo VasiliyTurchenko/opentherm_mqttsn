@@ -13,26 +13,37 @@ set(LINKER_SCRIPTS_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 ## different MCUs might be used
 
-set(TARGET_MASTER_MCU "stm32f1")
-#set(TARGET_MASTER_MCU "stm32f3")
+include(${CMAKE_CURRENT_SOURCE_DIR}/sources_list_STM32F1.cmake)
+include(${CMAKE_CURRENT_SOURCE_DIR}/sources_list_STM32F3.cmake)
+
+#set(TARGET_MASTER_MCU "stm32f1")
+set(TARGET_MASTER_MCU "stm32f3")
+
 
 IF(TARGET_MASTER_MCU MATCHES "stm32f1")
 
         message	(STATUS "TARGET_MASTER_MCU: " ${TARGET_MASTER_MCU})
-	set	(D_MCU "-DSTM32F103xB")
+	set	(D_MASTER_MCU "-DSTM32F103xB")
 	set	(MASTER_STARTUP_CODE_SOURCE ${STARTUP_CODE_DIR}/startup_stm32f103xb.s)
 	SET	(MASTER_LDSCRIPT	${LINKER_SCRIPTS_DIR}/STM32F103C8Tx_FLASH.ld)
 
-	SET	(MASTER_COMPILE_FLAGS -mcpu=cortex-m3 -mthumb -march=armv7-m -mfloat-abi=soft  -mno-thumb-interwork -v)
+	SET	(MASTER_COMPILE_FLAGS -mcpu=cortex-m3 -mthumb -mfloat-abi=soft  -mno-thumb-interwork -v)
+
+#mcu specified sources
+        set	(MASTER_MCU_SOURCES_GROUP	${LIST_OF_SOURCES_STM32F1})
+
 
 elseif(TARGET_MASTER_MCU MATCHES "stm32f3")
 
 	message	(STATUS "TARGET_MASTER_MCU: " ${TARGET_MASTER_MCU})
-	set	(D_MCU "-DSTM32F303xC")
+	set	(D_MASTER_MCU "-DSTM32F303xC")
 	set	(MASTER_STARTUP_CODE_SOURCE ${STARTUP_CODE_DIR}/startup_stm32f303xc.s)
-	SET	(MASTER_LDSCRIPT	${LINKER_SCRIPTS_DIR}/STM32F303VCTx_FLASH.ld)
+	SET	(MASTER_LDSCRIPT	${LINKER_SCRIPTS_DIR}/STM32F303CCTx_FLASH.ld)
 
-	SET	(MASTER_COMPILE_FLAGS -mcpu=cortex-m4 -mthumb -march=armv7-m -mfloat-abi=hard -mfpu=fpv4-sp-d16 -mno-thumb-interwork -v)
+	SET	(MASTER_COMPILE_FLAGS -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16  -v -mno-thumb-interwork )
+
+
+	set	(MASTER_MCU_SOURCES_GROUP	${LIST_OF_SOURCES_STM32F3})
 
 else()
 
@@ -41,9 +52,41 @@ else()
 endif()
 
 set	(TARGET_SLAVE_MCU "stm32f1")
-set	(SLAVE_STARTUP_CODE_SOURCE ${STARTUP_CODE_DIR}/startup_stm32f103xb.s)
-SET	(SLAVE_LDSCRIPT	${LINKER_SCRIPTS_DIR}/STM32F103C8Tx_FLASH.ld)
-SET	(SLAVE_COMPILE_FLAGS -mcpu=cortex-m3 -mthumb -march=armv7-m -mfloat-abi=soft  -mno-thumb-interwork -v)
+#set	(TARGET_SLAVE_MCU "stm32f3")
+
+IF(TARGET_SLAVE_MCU MATCHES "stm32f1")
+
+        message	(STATUS "TARGET_SLAVE_MCU: " ${TARGET_SLAVE_MCU})
+	set	(D_SLAVE_MCU "-DSTM32F103xB")
+	set	(SLAVE_STARTUP_CODE_SOURCE ${STARTUP_CODE_DIR}/startup_stm32f103xb.s)
+	SET	(SLAVE_LDSCRIPT	${LINKER_SCRIPTS_DIR}/STM32F103C8Tx_FLASH.ld)
+
+	SET	(SLAVE_COMPILE_FLAGS -mcpu=cortex-m3 -mthumb -march=armv7-m -mfloat-abi=soft  -mno-thumb-interwork -v)
+#mcu specified sources
+
+        set	(SLAVE_MCU_SOURCES_GROUP	${LIST_OF_SOURCES_STM32F1})
+
+
+elseif(TARGET_SLAVE_MCU MATCHES "stm32f3")
+
+	message	(STATUS "TARGET_SLAVE_MCU: " ${TARGET_SLAVE_MCU})
+	set	(D_SLAVE_MCU "-DSTM32F303xC")
+	set	(SLAVE_STARTUP_CODE_SOURCE ${STARTUP_CODE_DIR}/startup_stm32f303xc.s)
+	SET	(SLAVE_LDSCRIPT	${LINKER_SCRIPTS_DIR}/STM32F303CCTx_FLASH.ld)
+
+	SET	(SLAVE_COMPILE_FLAGS -mcpu=cortex-m4 -mthumb -mfloat-abi=hard -mfpu=fpv4-sp-d16  -mno-thumb-interwork -v)
+
+	set	(SLAVE_MCU_SOURCES_GROUP	${LIST_OF_SOURCES_STM32F3})
+
+
+else()
+
+	message(FATAL_ERROR "TARGET_SLAVE_MCU NOT DEFINED!")
+
+endif()
+
+
+
 
 
 message(STATUS "MASTER LDSCRIPT = " ${MASTER_LDSCRIPT})
@@ -74,10 +117,6 @@ include(${OPENTHERM_SOURCE_DIR}/opentherm_src_list.cmake)
 message("OPENTHERM_SOURCE_DIR = " ${OPENTHERM_SOURCE_DIR})
 # ----------------------------------------------------------
 
-#linker
-#SET	(LDSCRIPTS	${LINKER_SCRIPTS_DIR}/STM32F103C8Tx_FLASH.ld )
-#message("LDSCRIPTS = " ${LDSCRIPTS})
-
 
 # MCU independent definitions
 add_definitions(-DUSE_HAL_DRIVER)
@@ -96,31 +135,31 @@ endif()
 ##assembler flags
 set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -Wall -fdata-sections -ffunction-sections")
 
-##compiler flags
-#set(GCC_COVERAGE_COMPILE_FLAGS "-mcpu=cortex-m3 -mthumb -march=armv7-m -mfloat-abi=soft  -mno-thumb-interwork -v")
-
 set(GCC_COVERAGE_COMPILE_FLAGS "${GCC_COVERAGE_COMPILE_FLAGS} -Wall -fmessage-length=0 -ffunction-sections --specs=nano.specs")
-
-#set(GCC_COVERAGE_COMPILE_FLAGS "${GCC_COVERAGE_COMPILE_FLAGS} -Wall -fmessage-length=0 -ffunction-sections --specs=nosys.specs")
 
 set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS} ${CMAKE_CXX_DEBUG_FLAGS}")
 set(CMAKE_C_FLAGS  "${CMAKE_C_FLAGS} ${GCC_COVERAGE_COMPILE_FLAGS} ${CMAKE_CXX_DEBUG_FLAGS}")
 
+message(STATUS "100: CMAKE_CXX_FLAGS = " ${CMAKE_CXX_FLAGS})
+message(STATUS "101: CMAKE_C_FLAGS = " ${CMAKE_CXX_FLAGS})
 
 
 set (MASTER_BOARD ${PROJECT_NAME}_master_${TARGET_MASTER_MCU})
 set (SLAVE_BOARD ${PROJECT_NAME}_slave_${TARGET_SLAVE_MCU})
 
 
-add_executable(${MASTER_BOARD}
-	                        ${LIST_OF_SOURCES}
+add_executable			(
+	                        ${MASTER_BOARD}
+				${LIST_OF_SOURCES}
+				${MASTER_MCU_SOURCES_GROUP}
 				${MASTER_STARTUP_CODE_SOURCE}
 				${LIST_OF_OPENTHERM_SOURCES}
-		)
+				)
+
 target_compile_definitions	(
 	                                ${MASTER_BOARD} PRIVATE
 					-DMASTERBOARD
-					${D_MCU}
+					${D_MASTER_MCU}
 				)
 
 target_compile_options		(
@@ -128,22 +167,33 @@ target_compile_options		(
 					${MASTER_COMPILE_FLAGS}
 				)
 
-target_link_options(${MASTER_BOARD} PRIVATE "-Wl,-Map=${MASTER_BOARD}.map" "-Wl,-T${MASTER_LDSCRIPT}")
+target_link_options		(
+	                                ${MASTER_BOARD} PRIVATE
+					"-Wl,-Map=${MASTER_BOARD}.map"
+					"-Wl,-T${MASTER_LDSCRIPT}"
+					"-Wl,--gc-sections"
+					"-Wl,--verbose"
+					"-Wl,-V"
+					"-Wl,--cref"
+					${MASTER_COMPILE_FLAGS}
+					)
 
 
 STM32_ADD_HEX_BIN_TARGETS(${MASTER_BOARD})
 STM32_PRINT_SIZE_OF_TARGETS(${MASTER_BOARD})
 #STM32_ADD_DUMP_TARGET(${MASTER_BOARD})
 
-add_executable(${SLAVE_BOARD}
-	                        ${LIST_OF_SOURCES}
+add_executable			(
+	                        ${SLAVE_BOARD}
+				${LIST_OF_SOURCES}
+				${SLAVE_MCU_SOURCES_GROUP}
 				${SLAVE_STARTUP_CODE_SOURCE}
 				${LIST_OF_OPENTHERM_SOURCES}
-		)
+				)
 target_compile_definitions	(
 	                                ${SLAVE_BOARD} PRIVATE
 					-DSLAVEBOARD
-					${D_MCU}
+					${D_SLAVE_MCU}
 				)
 
 target_compile_options		(
@@ -151,34 +201,23 @@ target_compile_options		(
 					${SLAVE_COMPILE_FLAGS}
 				)
 
-target_link_options(${SLAVE_BOARD} PRIVATE "-Wl,-Map=${SLAVE_BOARD}.map" "-Wl,-T${SLAVE_LDSCRIPT}")
+target_link_options		(	${SLAVE_BOARD} PRIVATE
+	                                "-Wl,-Map=${SLAVE_BOARD}.map"
+					"-Wl,-T${SLAVE_LDSCRIPT}"
+					"-Wl,--gc-sections"
+					"-Wl,--verbose"
+					"-Wl,-V"
+					"-Wl,--cref"
+					${SLAVE_COMPILE_FLAGS}
+					)
 
 STM32_ADD_HEX_BIN_TARGETS(${SLAVE_BOARD})
 STM32_PRINT_SIZE_OF_TARGETS(${SLAVE_BOARD})
 #STM32_ADD_DUMP_TARGET(${SLAVE_BOARD})
 
 
-
-##linker flags passed by the compiler
-set	(
-	        GCC_COVERAGE_LINK_FLAGS
-		"-Wl,--gc-sections \
-		 -Wl,--verbose \
-		 -Wl,-V \
-		 -Wl,--cref"
-	)
-
-message("GCC_COVERAGE_LINK_FLAGS = " ${GCC_COVERAGE_LINK_FLAGS})
-
-
-##combine flags
-SET	(	CMAKE_CXX_FLAGS
-	        "${CMAKE_CXX_FLAGS} ${GCC_COVERAGE_LINK_FLAGS}"
-	)
-
-SET	(	CMAKE_C_FLAGS
-	        "${CMAKE_C_FLAGS} ${GCC_COVERAGE_LINK_FLAGS}"
-	)
+message(STATUS "184: CMAKE_CXX_FLAGS = " ${CMAKE_CXX_FLAGS})
+message(STATUS "185: CMAKE_C_FLAGS = " ${CMAKE_CXX_FLAGS})
 
 
 #ADD_MAPFILE(${MASTER_BOARD})
@@ -190,5 +229,4 @@ message("CMAKE_SYSTEM_NAME = " ${CMAKE_SYSTEM_NAME} "      CMAKE_HOST_SYSTEM_NAM
 message("CMAKE_SYSTEM = " ${CMAKE_SYSTEM} "      CMAKE_HOST_SYSTEM = " ${CMAKE_HOST_SYSTEM})
 MESSAGE("CMAKE_C_COMPILER = " ${CMAKE_C_COMPILER})
 MESSAGE("CMAKE_BUILD_TYPE = " ${CMAKE_BUILD_TYPE})
-MESSAGE("CMAKE_CXX_FLAGS = " ${CMAKE_CXX_FLAGS})
 MESSAGE("*********************")

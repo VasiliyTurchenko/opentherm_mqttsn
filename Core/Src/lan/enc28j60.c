@@ -13,7 +13,13 @@
 #include "task.h"
 #include "cmsis_os.h"
 
+#if defined (STM32F103xB)
 #include "stm32f1xx.h"
+#elif (STM32F303xC)
+#include "stm32f3xx.h"
+#else
+	#error "MCU NOT DEFINED!"
+#endif
 
 #include "enc28j60.h"
 

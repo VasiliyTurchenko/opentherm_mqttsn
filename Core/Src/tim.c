@@ -57,7 +57,7 @@
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim2;
 
-/* TIM2 init function */
+/* TIM4 init function */
 void MX_TIM4_Init(void)
 {
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
@@ -86,7 +86,7 @@ void MX_TIM4_Init(void)
   }
 
 }
-/* TIM4 init function */
+/* TIM2 init function */
 void MX_TIM2_Init(void)
 {
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
@@ -124,10 +124,10 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* tim_baseHandle)
   /* USER CODE BEGIN TIM4_MspInit 0 */
 
   /* USER CODE END TIM4_MspInit 0 */
-    /* TIM2 clock enable */
+    /* TIM4 clock enable */
     __HAL_RCC_TIM4_CLK_ENABLE();
 
-    /* TIM2 interrupt Init */
+    /* TIM4 interrupt Init */
     HAL_NVIC_SetPriority(TIM4_IRQn, 7, 0);
     HAL_NVIC_EnableIRQ(TIM4_IRQn);
   /* USER CODE BEGIN TIM4_MspInit 1 */

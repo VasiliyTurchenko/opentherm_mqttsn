@@ -10,7 +10,16 @@
   */
 
 #include <stdint.h>
+#ifdef STM32F103xB
 #include "stm32f1xx.h"
+#elif STM32F303xC
+#include "stm32f3xx.h"
+#else
+
+#error "MCU TARGET NOT DEFINED!"
+
+#endif
+
 #include "lan.h"
 
 #include "tiny-fs.h"

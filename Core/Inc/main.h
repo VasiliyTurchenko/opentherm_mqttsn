@@ -58,7 +58,16 @@ extern "C" {
 #endif
 
 /* Includes ------------------------------------------------------------------*/
+
+#if defined (STM32F103xB)
 #include "stm32f1xx_hal.h"
+#elif (STM32F303xC)
+#include "stm32f3xx_hal.h"
+#else
+	#error "MCU NOT DEFINED!"
+#endif
+
+
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */

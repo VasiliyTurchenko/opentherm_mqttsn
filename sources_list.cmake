@@ -78,46 +78,15 @@ set(GROUP_CORE_SRC
 		Core/Src/main.c
 		Core/Src/rtc.c
 		Core/Src/spi.c
-		Core/Src/stm32f1xx_hal_msp.c
-		Core/Src/stm32f1xx_hal_timebase_tim.c
-		Core/Src/stm32f1xx_it.c
-		Core/Src/system_stm32f1xx.c
+
 		Core/Src/tim.c
 		Core/Src/usart.c
 #		Core/Src/syscalls.c
 )
 
-set(GROUP_DRIVERS_STM32F1XX_HAL_DRIVER_SRC
-	        Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_adc.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_adc_ex.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_cortex.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_crc.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_dma.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_flash_ex.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_gpio.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_gpio_ex.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_i2c.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_iwdg.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_pwr.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_rcc.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_rcc_ex.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_rtc.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_rtc_ex.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_spi.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_spi_ex.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_tim.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_tim_ex.c
-		Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_hal_uart.c
-)
 
 set(GROUP_MIDDLEWARES_THIRD_PARTY_FREERTOS_SOURCE_CMSIS_RTOS
 	        Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS/cmsis_os.c
-)
-
-set(GROUP_MIDDLEWARES_THIRD_PARTY_FREERTOS_SOURCE_PORTABLE_GCC_ARM_CM3
-	        Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3/port.c
 )
 
 set(GROUP_MIDDLEWARES_THIRD_PARTY_FREERTOS_SOURCE
@@ -138,16 +107,16 @@ include_directories(Core/Inc/ntp)
 include_directories(Core/Inc/nvmem)
 include_directories(Core/Inc/tftp)
 include_directories(Core/Inc/tiny-fs)
-include_directories(Drivers/CMSIS/Device/ST/STM32F1xx/Include)
+
 include_directories(Drivers/CMSIS/Include)
-include_directories(Drivers/STM32F1xx_HAL_Driver/Inc)
-include_directories(Drivers/STM32F1xx_HAL_Driver/Inc/Legacy)
+
 include_directories(Middlewares/Third_Party/FreeRTOS/Source/CMSIS_RTOS)
 include_directories(Middlewares/Third_Party/FreeRTOS/Source/include)
-include_directories(Middlewares/Third_Party/FreeRTOS/Source/portable/GCC/ARM_CM3)
+
 
 set(LIST_OF_SOURCES
-	        ${GROUP_CORE_SRC}
+	        ${LIST_OF_SOURCES}
+		${GROUP_CORE_SRC}
 		${GROUP_CORE_SRC_APP}
 		${GROUP_CORE_SRC_HELPERS}
 		${GROUP_CORE_SRC_LAN}
@@ -157,8 +126,9 @@ set(LIST_OF_SOURCES
 		${GROUP_CORE_SRC_NVMEM}
 		${GROUP_CORE_SRC_TFTP}
 		${GROUP_CORE_SRC_TINY-FS}
-		${GROUP_DRIVERS_STM32F1XX_HAL_DRIVER_SRC}
-		${GROUP_MIDDLEWARES_THIRD_PARTY_FREERTOS_SOURCE}
+#		${GROUP_DRIVERS_STM32F1XX_HAL_DRIVER_SRC}
+                ${GROUP_MIDDLEWARES_THIRD_PARTY_FREERTOS_SOURCE}
 		${GROUP_MIDDLEWARES_THIRD_PARTY_FREERTOS_SOURCE_CMSIS_RTOS}
-		${GROUP_MIDDLEWARES_THIRD_PARTY_FREERTOS_SOURCE_PORTABLE_GCC_ARM_CM3}
+#		${GROUP_MIDDLEWARES_THIRD_PARTY_FREERTOS_SOURCE_PORTABLE_GCC_ARM_CM3}
 )
+
