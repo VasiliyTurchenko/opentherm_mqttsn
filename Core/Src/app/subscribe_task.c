@@ -24,19 +24,16 @@
 
 #include "manchester_task.h"
 
-
-#include "opentherm_wrappers.h"
-
 //#include "MQTT_SN_task.h"
 
 extern const Media_Desc_t Media0;
 
-extern osThreadId SubscrbTaskHandle;
+//extern osThreadId SubscrbTaskHandle;
 
-TaskHandle_t TaskToNotify_afterTx;
-TaskHandle_t TaskToNotify_afterRx;
+//TaskHandle_t TaskToNotify_afterTx;
+//TaskHandle_t TaskToNotify_afterRx;
 
-extern osThreadId ManchTaskHandle;
+//extern osThreadId ManchTaskHandle;
 
 /* all in the one */
 static const struct MQTT_parameters MQTT_sub_parameters = {
@@ -82,18 +79,11 @@ void subscribe_task_init(void)
 			&MQTT_sub_working_set, &MQS_IP_cfg);
 
 	/* got here - initialize context */
-	TaskToNotify_afterTx = SubscrbTaskHandle;
-	TaskToNotify_afterRx = SubscrbTaskHandle;
+//	TaskToNotify_afterTx = SubscrbTaskHandle;
+//	TaskToNotify_afterRx = SubscrbTaskHandle;
 
 /* code for slave */
 #ifdef SLAVEBOARD
-
-	xputs("OpenTherm initialization ");
-	if (OPENTHERM_InitSlave() != OPENTHERM_ResOK) {
-		xputs("error!\n");
-	} else {
-		xputs("OK.\n");
-	}
 
 /* code for master */
 #elif defined(MASTERBOARD)
@@ -109,46 +99,46 @@ void subscribe_task_init(void)
  */
 void subscribe_task_run(void)
 {
-	static uint32_t data = 0U;
-	static uint32_t notif_val = 0U;
+//	static uint32_t data = 0U;
+//	static uint32_t notif_val = 0U;
 
 	i_am_alive(SUB_TASK_MAGIC);
 
-	*(uint32_t *)(&Tx_buf[0]) = data;
+//	*(uint32_t *)(&Tx_buf[0]) = data;
 
-	xTaskNotify(ManchTaskHandle, MANCHESTER_TRANSMIT_NOTIFY,
-		    eSetValueWithOverwrite);
+//	xTaskNotify(ManchTaskHandle, MANCHESTER_TRANSMIT_NOTIFY,
+//		    eSetValueWithOverwrite);
 
-	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
-			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
-		xputs("sub task: got notification tx ");
-		if (notif_val == 0U) {
-			xputs("ERR\n");
-		} else {
-			xputs("OK\n");
-			data++;
-		}
-	}
+//	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
+//			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
+//		xputs("sub task: got notification tx ");
+//		if (notif_val == (ErrorStatus)ERROR) {
+//			xputs("ERR\n");
+//		} else {
+//			xputs("OK\n");
+//			data++;
+//		}
+//	}
 
-	vTaskDelay(pdMS_TO_TICKS(20U));
+//	vTaskDelay(pdMS_TO_TICKS(20U));
 
-	*(uint32_t *)(&Rx_buf[0]) = 0U;
+//	*(uint32_t *)(&Rx_buf[0]) = 0U;
 
-	xTaskNotify(ManchTaskHandle, MANCHESTER_RECEIVE_NOTIFY,
-		    eSetValueWithOverwrite);
+//	xTaskNotify(ManchTaskHandle, MANCHESTER_RECEIVE_NOTIFY,
+//		    eSetValueWithOverwrite);
 
-	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
-			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
-		xputs("sub task:notif. rx");
-		if (notif_val == 0U) {
-			xputs(" ERR\n");
-			vTaskDelay(pdMS_TO_TICKS(800U));
+//	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
+//			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
+//		xputs("sub task:notif. rx");
+//		if (notif_val == (ErrorStatus)ERROR) {
+//			xputs(" ERR\n");
+//			vTaskDelay(pdMS_TO_TICKS(800U));
 
-		} else {
-			xputs(" OK. ");
-			xprintf("Received: %d\n", *(uint32_t *)(&Rx_buf[0]));
-		}
-	}
+//		} else {
+//			xputs(" OK. ");
+//			xprintf("Received: %d\n", *(uint32_t *)(&Rx_buf[0]));
+//		}
+//	}
 	vTaskDelay(pdMS_TO_TICKS(200U));
 }
 
@@ -158,56 +148,56 @@ void subscribe_task_run(void)
 
 void subscribe_task_run(void)
 {
-	static uint32_t data = 0U;
+//	static uint32_t data = 0U;
 
-	uint32_t notif_val = 0U;
+//	uint32_t notif_val = 0U;
 
 	i_am_alive(SUB_TASK_MAGIC);
 
-	*(uint32_t *)(&Rx_buf[0]) = 0U;
+//	*(uint32_t *)(&Rx_buf[0]) = 0U;
 
-	xTaskNotifyStateClear(ManchTaskHandle);
+//	xTaskNotifyStateClear(ManchTaskHandle);
 
-	xTaskNotify(ManchTaskHandle, MANCHESTER_RECEIVE_NOTIFY,
-		    eSetValueWithOverwrite);
+//	xTaskNotify(ManchTaskHandle, MANCHESTER_RECEIVE_NOTIFY,
+//		    eSetValueWithOverwrite);
 
-	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
-			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
-		if (notif_val == 0U) {
-			//			xputs("manch. rx ERR\n");
-			goto fExit;
+//	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
+//			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
+//		if (notif_val == (ErrorStatus)ERROR) {
+//			//			xputs("manch. rx ERR\n");
+//			goto fExit;
 
-		} else {
-			xputs("\nsub task: notif. rx OK. ");
-			xprintf("Received: %d\n", *(uint32_t *)(&Rx_buf[0]));
-		}
-	} else {
-		goto fExit;
-	}
+//		} else {
+//			xputs("\nsub task: notif. rx OK. ");
+//			xprintf("Received: %d\n", *(uint32_t *)(&Rx_buf[0]));
+//		}
+//	} else {
+//		goto fExit;
+//	}
 
-	*(uint32_t *)(&Tx_buf[0]) = *(uint32_t *)(&Rx_buf[0]);
+//	*(uint32_t *)(&Tx_buf[0]) = *(uint32_t *)(&Rx_buf[0]);
 
-	vTaskDelay(pdMS_TO_TICKS(500U));
+//	vTaskDelay(pdMS_TO_TICKS(500U));
 
-	xTaskNotifyStateClear(ManchTaskHandle);
+//	xTaskNotifyStateClear(ManchTaskHandle);
 
-	taskENTER_CRITICAL();
-	xTaskNotify(ManchTaskHandle, MANCHESTER_TRANSMIT_NOTIFY,
-		    eSetValueWithOverwrite);
-	taskEXIT_CRITICAL();
-	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
-			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
-		xputs("sub task: notif. tx ");
-		if (notif_val == 0U) {
-			xputs("ERR\n");
-		} else {
-			xputs("OK\n");
-			data++;
-		}
-	}
+//	taskENTER_CRITICAL();
+//	xTaskNotify(ManchTaskHandle, MANCHESTER_TRANSMIT_NOTIFY,
+//		    eSetValueWithOverwrite);
+//	taskEXIT_CRITICAL();
+//	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
+//			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
+//		xputs("sub task: notif. tx ");
+//		if (notif_val == (ErrorStatus)ERROR) {
+//			xputs("ERR\n");
+//		} else {
+//			xputs("OK\n");
+//			data++;
+//		}
+//	}
 
-fExit:
-	return;
+//fExit:
+//	return;
 }
 
 #endif

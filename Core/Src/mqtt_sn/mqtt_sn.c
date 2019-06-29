@@ -2,29 +2,38 @@
  * Copyright (c) Vasiliy Turchenko
  *
  * date: 10-Jan-2018
- *  MQTT-SN simple procedures - publishing
+ * date: 29-Jun-2019
+ *  MQTT-SN simple procedures - publishing / subscribing
  *
  *******************************************************************************/
 
 
-#include "MQTT_SN_task.h"
-/* #include "stm32f1xx.h" */
+#include "mqtt_sn.h"
+
 #include "xprintf.h"
-#include "data_acquisition.h"
+
 #include "hex_gen.h"
 
 #include "debug_settings.h"
+
+#include "opentherm_daq_def.h"
 
 
 MQTT_SN_Context_t	mqttsncontext01;	/* the static instance of the context for publishing */
 MQTT_SN_Context_t	mqttsncontext02;	/* the static instance of the context for subscribing */
 
+extern void DAQ_UpdateLD_callback(const uint16_t topicid,
+					const uint8_t ldid,
+					const enum tPubSub pubsub);
+
 #define		TOPIC_TEXT	"LD_ID:000"
 #define		TOPIC_CMD	"CMD:000"
+#define		ROOT_TOPIC_LEN (40)
+#define		MAX_TOPICSTR_LEN	(ROOT_TOPIC_LEN + 10)
 
-const MQTTSNPacket_connectData opt =  MQTTSNPacket_connectData_initializer;
+static const MQTTSNPacket_connectData opt =  MQTTSNPacket_connectData_initializer;
 
-const	TickType_t	maxidle = 15*1000;
+static const TickType_t	maxidle = (uint32_t)(15*1000);
 
 /**
   * Resets last processed packet id field in the context
@@ -45,34 +54,41 @@ ErrorStatus mqtt_sn_reset_last_packid(MQTT_SN_Context_p pcontext)
   */
 
 ErrorStatus mqtt_sn_init_context(MQTT_SN_Context_p pcontext, \
-				 const char* clientIDstring,\
-				 const uint16_t hostgwport, \
-				 const uint32_t hostgwip)
+				 struct MQTT_topic_para * topic_params,\
+				 cfg_pool_t *ip_para)
 {
 	ErrorStatus result;
 	result = ERROR;
-	pcontext->Host_GW_IP = hostgwip;
-	pcontext->Host_GW_Port = hostgwport;
-	pcontext->Root_Topic = Get_Root_Topic();
+
+	pcontext->Host_GW_IP = ip_para->pair.ip;
+
+	pcontext->Host_GW_Port = ip_para->pair.port;
+
+	pcontext->Root_Topic = topic_params->rootTopic;
 	pcontext->options = opt;
 
-	pcontext->options.clientID.cstring = (char*)clientIDstring;  /* "DIO-MPVV"; */
+	pcontext->options.clientID.cstring = (char*)topic_params->pub_client_id_string;
 	pcontext->state = IDLE;
 	pcontext->packetid = 0;
 	pcontext->time_OK = 0;
 
-	socket_p	insoc = NULL;
-	socket_p	outsoc = NULL;
+	socket_p	insoc;
+	socket_p	outsoc;
+	insoc = NULL;
+	outsoc = NULL;
+
 	insoc = bind_socket(pcontext->Host_GW_IP, pcontext->Host_GW_Port, 0, SOC_MODE_READ);
 	if (insoc == NULL) {
 		goto fExit;		/* error with socket */
 	}
+
 	outsoc = bind_socket(pcontext->Host_GW_IP, pcontext->Host_GW_Port, 0, SOC_MODE_WRITE);
 	if (outsoc == NULL) {
 		/* release insoc */
 		insoc = close_socket(insoc);	/* release good socket */
 		goto fExit;
 	}
+	pcontext->lastPubSubMV = 0U;
 	result = SUCCESS;		/* all is OK! */
 fExit:
 	/* correct insocket's local port */
@@ -179,7 +195,7 @@ ErrorStatus mqtt_sn_register_topic(MQTT_SN_Context_p pcontext, uint8_t ldid)
 	goto fExit;
 	}
 
-	uint8_t		buf[100];
+	static	uint8_t		buf[100];
 	int32_t		buflen;
 	buflen = sizeof(buf);
 	uint32_t 	len;
@@ -219,7 +235,7 @@ static	char	tmptopicstr[MAX_TOPICSTR_LEN];
 
 	len = (uint32_t)MQTTSNSerialize_register(buf, buflen, 0, packetid, &topicstr);
 
-	result = write_socket(pcontext->outsoc, buf, len);
+	result = write_socket(pcontext->outsoc, buf, (int32_t)len);
 	if (result == ERROR)
 	{
 		goto fExit;
@@ -568,7 +584,9 @@ ErrorStatus mqtt_sn_poll_subscribed(MQTT_SN_Context_p pcontext)
 			if ( (packet_id > pcontext->last_procd_packet_id) || \
 			     ((packet_id < 0x8000U) && (pcontext->last_procd_packet_id > 0x8000U)) ) \
 			     { /* normally sequenced packet id */
-				DAQ_Dispatch(payload, pubtopic, packet_id);
+
+//				DAQ_Dispatch(payload, pubtopic, packet_id);
+
 				pcontext->last_procd_packet_id = packet_id;
 				/* end of proceed topic */
 			} else {

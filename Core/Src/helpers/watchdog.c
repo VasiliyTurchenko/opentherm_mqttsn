@@ -25,20 +25,25 @@ void start_iwdt(const TickType_t timeout);
  */
 void i_am_alive(const uint32_t magic)
 {
+
 	if ((magic == 0U) || (magic > 31U)) {return;}		/* bad magic */
 	if ((magic_bits & (0x01U << magic)) == 0U) {return;}	/* magic isn't registered */
 	taskENTER_CRITICAL();
 	magic_bits &= ~(0x01U << magic);		/* reset the bit corresponding the caller task */
 // 04-04-2018
 	/* save magic_bits to backup domain */
-	HAL_RTCEx_BKUPWrite(&hrtc, WDT_REG, magic_bits);	
-	
+	HAL_RTCEx_BKUPWrite(&hrtc, WDT_REG, magic_bits);
+
 	if (magic_bits == 0U) {
+
+//		xputs("\n\n\nWDG reload\n\n\n");
+
 		HAL_IWDG_Refresh(&hiwdg);		/* reload iwdt */
 		magic_bits = magic_mask;
 	}
 	taskEXIT_CRITICAL();
-	
+
+
 }
 
 /**
@@ -54,7 +59,7 @@ void register_magic(const uint32_t magic_pos)
 	magic_bits = magic_mask;
 	taskEXIT_CRITICAL();
 }
-                                       
+
 /**
  * @brief start_iwdt initializes and starts the independent watchdog timer
  * @param TickType_t timeout	- timeout in ms
@@ -63,7 +68,7 @@ void register_magic(const uint32_t magic_pos)
 void start_iwdt(const TickType_t timeout)
 {
 	/* ... */
-	
+
 	magic_bits = magic_mask;
 }
 

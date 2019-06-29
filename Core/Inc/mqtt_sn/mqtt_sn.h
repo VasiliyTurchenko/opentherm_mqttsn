@@ -21,6 +21,10 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include "tiny-fs.h"
+#include "config_files.h"
+#include "ip_helpers.h"
+
 #include "MQTTSNPacket\MQTTSNPacket.h"
 #include "MQTTSNPacket\MQTTSNConnect.h"
 
@@ -28,17 +32,19 @@
 
 
 enum	tConnState					/*!< MQTT-SN connection state */
-        {
-	        IDLE,					/*!< idle state */
-	        CONNECTING,				/*!< trying to connect to the gateway */
-	        CONNECTED,				/*!< connected */
-	        DISCONNECTING				/*!< disconnecting...*/
-        };
+	{
+		IDLE,					/*!< idle state */
+		CONNECTING,				/*!< trying to connect to the gateway */
+		CONNECTED,				/*!< connected */
+		DISCONNECTING				/*!< disconnecting...*/
+	};
 
 typedef	struct MQTT_SN_Context
-        {
-	        uint16_t	Host_GW_Port;		/*!< MQTT-SN gateway port */
+	{
+		uint16_t	Host_GW_Port;		/*!< MQTT-SN gateway port */
 		uint32_t	Host_GW_IP;		/*!< MQTT-SN gateway IP address */
+/*		uint32_t	Subnet_Mask;	*/	/*!< The subnet mask */
+/*		uint32_t	Gateway_IP;	*/	/*!< The Gateway IP address */
 		char		*Root_Topic;		/*!< Root topic asciiz string */
 		MQTTSNPacket_connectData	options;/*!< connection options  */
 		enum tConnState			state;	/*!< current context state */
@@ -48,8 +54,9 @@ typedef	struct MQTT_SN_Context
 		TickType_t	time_OK;		/*!< timestamp of the last successful event*/
 		uint16_t	last_procd_packet_id;	/*!< last processed packetid */
 
+		uint16_t	lastPubSubMV;		/*!< last pub/sub MV index */
 
-        }	MQTT_SN_Context_t;			/*!< Context for MQTT-SN connection */
+	}	MQTT_SN_Context_t;			/*!< Context for MQTT-SN connection */
 
 typedef	MQTT_SN_Context_t	*MQTT_SN_Context_p;
 
@@ -59,9 +66,8 @@ extern MQTT_SN_Context_t	mqttsncontext02;	/* the static instance of the context 
 ErrorStatus mqtt_sn_connect(MQTT_SN_Context_p pcontext);
 
 ErrorStatus mqtt_sn_init_context(MQTT_SN_Context_p pcontext, \
-                                 const char* clientIDstring,\
-                                 const uint16_t hostgwport, \
-                                 const uint32_t hostgwip);
+				 struct MQTT_topic_para * topic_params,\
+				 cfg_pool_t *ip_para);
 
 /**
   * De-Initialises MQTT-SN context

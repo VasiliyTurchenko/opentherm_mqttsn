@@ -63,6 +63,11 @@ void MX_IWDG_Init(void)
   hiwdg.Instance = IWDG;
   hiwdg.Init.Prescaler = IWDG_PRESCALER_256;
   hiwdg.Init.Reload = 4095;
+
+#ifdef STM32F303xC
+  hiwdg.Init.Window = 4095;
+#endif
+
   if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
   {
     Error_Handler();

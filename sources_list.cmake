@@ -8,7 +8,7 @@ set(GROUP_CORE_SRC_APP
 		Core/Src/app/service_task.c
 		Core/Src/app/publish_task.c
 		Core/Src/app/subscribe_task.c
-#		Core/Src/app/MQTT_SN_task.c
+		Core/Src/app/opentherm_task.c
 )
 
 set(GROUP_CORE_SRC_HELPERS
@@ -29,6 +29,11 @@ set(GROUP_CORE_SRC_LAN
 	        Core/Src/lan/enc28j60.c
 		Core/Src/lan/lan.c
 )
+
+set(GROUP_CORE_SRC_MQTT_SN
+	        Core/Src/mqtt_sn/mqtt_sn.c
+)
+
 
 set(GROUP_CORE_SRC_MANCHESTER
 	        Core/Src/manchester/bit_queue.c
@@ -100,6 +105,7 @@ set(GROUP_MIDDLEWARES_THIRD_PARTY_FREERTOS_SOURCE
 include_directories(Core/Inc)
 include_directories(Core/Inc/MQTTSNPacket)
 include_directories(Core/Inc/app)
+include_directories(Core/Inc/mqtt_sn)
 include_directories(Core/Inc/helpers)
 include_directories(Core/Inc/lan)
 include_directories(Core/Inc/manchester)
@@ -122,6 +128,7 @@ set(LIST_OF_SOURCES
 		${GROUP_CORE_SRC_LAN}
 		${GROUP_CORE_SRC_MANCHESTER}
 		${GROUP_CORE_SRC_MQTTSNPACKET}
+		${GROUP_CORE_SRC_MQTT_SN}
 		${GROUP_CORE_SRC_NTP}
 		${GROUP_CORE_SRC_NVMEM}
 		${GROUP_CORE_SRC_TFTP}

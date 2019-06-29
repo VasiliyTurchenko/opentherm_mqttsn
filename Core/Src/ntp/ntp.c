@@ -65,6 +65,8 @@ ErrorStatus NTP_sync(ip_pair_t serv)
 	NTP_packet.txTm_f =
 		ntohl(NTP_packet.txTm_f); /* Time-stamp fraction of a second. */
 
+	/* add fractions!*/
+
 	/* Extract the 32 bits that represent the time-stamp seconds (since NTP epoch) from when the packet left the server. */
 	/* Subtract 70 years worth of seconds from the seconds since 1900. */
 	/* This leaves the seconds since the UNIX epoch of 1970. */

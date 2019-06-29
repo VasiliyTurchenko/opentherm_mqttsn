@@ -6,6 +6,8 @@
  *  @date 10-03-2019
  */
 
+#ifdef MASTERBOARD
+
 #include "watchdog.h"
 #include "lan.h"
 #include "xprintf.h"
@@ -19,10 +21,16 @@
 #include "messages.h"
 
 #include "mqtt_config_helper.h"
+#include "mqtt_sn.h"
 
-//#include "MQTT_SN_task.h"
+#include "opentherm.h"
+#include "opentherm_json.h"
 
 extern const Media_Desc_t Media0;
+extern osMutexId ETH_Mutex01Handle;
+
+extern tMV *OPENTHERM_getMV(size_t i);
+extern void OPENTHERM_GetNextMVLD(uint16_t *lastreg);
 
 /* all in the one */
 static const struct MQTT_parameters MQTT_pub_parameters = {
@@ -68,7 +76,6 @@ void publish_task_init(void)
 			&MQTT_pub_working_set, &MQP_IP_cfg);
 
 	/* got here - initialize context */
-
 }
 
 /**
@@ -78,11 +85,149 @@ void publish_task_run(void)
 {
 	i_am_alive(PUB_TASK_MAGIC);
 	HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
-	HAL_GPIO_TogglePin(ESP_PWR_GPIO_Port, ESP_PWR_Pin);
+
 	osDelay(100U);
 	HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
-	HAL_GPIO_TogglePin(ESP_PWR_GPIO_Port, ESP_PWR_Pin);
+
 	osDelay(100U);
 
+	/* initialize pub context */
+	static uint32_t conn_attempts = 0U;
+	if (mqtt_sn_init_context(
+		    &mqttsncontext01,
+		    &MQTT_pub_working_set,
+		    &MQP_IP_cfg) != SUCCESS) {
+		do {
+#ifdef MQTT_SN_PUB_DEBUG_PRINT
+			xputs("initializing publish context...\n");
+#endif
+			mqtt_sn_deinit_context(&mqttsncontext01);
+		} while (1);
+	}
+
+	/* context initialized */
+	/* Now we have to connect to the gateway */
+	while ((ETH_Mutex01Handle == NULL) || (lan_up() != 1U)) {
+		osDelay(pdMS_TO_TICKS(50U)); /* wait 50ms and try again */
+	}
+
+	while (mqttsncontext01.state != CONNECTED) {
+		conn_attempts++; /* increment attempts counter */
+#ifdef MQTT_SN_PUB_DEBUG_PRINT
+		xprintf("publish connection attempt %d\n", conn_attempts);
+#endif
+		if (mqtt_sn_connect(&mqttsncontext01) == SUCCESS) {
+			break;
+		}
+		i_am_alive(PUB_TASK_MAGIC);
+		osDelay(200U); /* wait 200ms and try again */
+	}
+
+	/* Now we have to register topics */
+	ErrorStatus regresult = ERROR;
+	mqttsncontext01.lastPubSubMV = 0U; /* RESET list */
+	do {
+		/* request the LD to be registered */
+		OPENTHERM_GetNextMVLD(&mqttsncontext01.lastPubSubMV);
+		if (mqttsncontext01.lastPubSubMV == 0xFFFF) {
+			break;
+		}
+#ifdef MQTT_SN_PUB_DEBUG_PRINT
+		xprintf("registering LDID:%d\n", nextLD);
+#endif
+		regresult = mqtt_sn_register_topic(
+			&mqttsncontext01,
+			(uint8_t)mqttsncontext01.lastPubSubMV);
+		if (regresult == ERROR) {
+			break;
+		} /* exit the loop with regresult = error */
+		i_am_alive(PUB_TASK_MAGIC);
+		osDelay(50U);
+	} while (1);
+
+	/* here all the topics are registered */
+	/* start periodic part of the task */
+	TickType_t xLastWakeTime;
+	TickType_t xPeriod = pdMS_TO_TICKS(1000U);
+	xLastWakeTime = xTaskGetTickCount(); // get value only once!
+	/* Infinite loop - internal */
+	if (regresult == SUCCESS) {
+		ErrorStatus publishresult = ERROR;
+		for (;;) {
+			/* iterate over MV list */
+			for (size_t i = 0U; i < MV_ARRAY_LENGTH; i++) {
+				/* get MV */
+
+				tMV *pMV = OPENTHERM_getMV(i); /* mutex lock !*/
+
+				if (pMV == NULL) {
+					continue;
+				}
+
+				/* convert MV to JSON */
+				char *pjson;
+				pjson = (char *)ConvertMVToJSON(pMV);
+
+				/* publish JSON */
+				publishresult = mqtt_sn_publish_topic(
+					&mqttsncontext01, pMV->TopicId, pjson);
+				if (publishresult == ERROR) {
+					break;
+				} /* break the internal infinite loop*/
+			}
+
+			/* what to do if publish result != SUCCESS */
+			if (publishresult == ERROR) {
+				break;
+			}
+
+			i_am_alive(PUB_TASK_MAGIC);
+
+			vTaskDelayUntil(&xLastWakeTime, xPeriod);
+		}
+	}
+	/* release sockets */
+	ErrorStatus deinitresult;
+	deinitresult = mqtt_sn_deinit_context(&mqttsncontext01);
+	if (deinitresult == ERROR) {
+		/* need reboot */
+		for (;;) {
+			;
+		} /* LOCK */
+	}
+}
+
+#elif SLAVEBOARD
+
+#include "main.h"
+#include "task_tokens.h"
+#include "watchdog.h"
+
+/**
+ * @brief publish_task_init
+ */
+void publish_task_init(void)
+{
+	register_magic(PUB_TASK_MAGIC);
+}
+
+
+/**
+ * @brief publish_task_run
+ */
+void publish_task_run(void)
+{
+	i_am_alive(PUB_TASK_MAGIC);
+	HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+
+	osDelay(100U);
+	HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
+
+	osDelay(100U);
 
 }
+
+
+#else
+#error	Neither MASTERBOARD nor SLAVEBOARD defined!
+#endif

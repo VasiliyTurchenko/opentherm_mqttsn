@@ -9,5 +9,6 @@
 #define PUB_TASK_MAGIC		(uint32_t)(MAGIC_SEED + 3)
 #define SUB_TASK_MAGIC		(uint32_t)(MAGIC_SEED + 4)
 #define SERVICE_TASK_MAGIC	(uint32_t)(MAGIC_SEED + 5)
+#define OPENTHERM_TASK_MAGIC	(uint32_t)(MAGIC_SEED + 6)
 
 #endif // TASK_TOKENS_H

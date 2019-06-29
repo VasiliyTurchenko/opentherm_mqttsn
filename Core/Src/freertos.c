@@ -63,6 +63,7 @@
 #include "service_task.h"
 #include "publish_task.h"
 #include "subscribe_task.h"
+#include "opentherm_task.h"
 
 #include "string.h"
 
@@ -89,14 +90,14 @@
 /* Private variables ---------------------------------------------------------*/
 /* USER CODE BEGIN Variables */
 
-osMutexId FS_Mutex01Handle;
-osStaticMutexDef_t FS_Mutex01_ControlBlock;
+osMutexId FS_Mutex01Handle __attribute__((section (".ccmram")));
+osStaticMutexDef_t FS_Mutex01_ControlBlock __attribute__((section (".ccmram")));
 
-osMutexId CRC_MutexHandle;
-osStaticMutexDef_t CRC_Mutex_ControlBlock;
+osMutexId CRC_MutexHandle __attribute__((section (".ccmram")));
+osStaticMutexDef_t CRC_Mutex_ControlBlock __attribute__((section (".ccmram")));
 
-osMutexId ManchesterTimer01MutexHandle;
-osStaticMutexDef_t ManchesterTimer01Mutex_ControlBlock;
+osMutexId ManchesterTimer01MutexHandle __attribute__((section (".ccmram")));
+osStaticMutexDef_t ManchesterTimer01Mutex_ControlBlock __attribute__((section (".ccmram")));
 
 #ifdef DEBUG
 static volatile size_t LANPollTaskBuffer_depth;
@@ -106,33 +107,40 @@ static volatile size_t ProcSPSTaskBuffer_depth;
 static volatile size_t SubscribeTaskBuffer_depth;
 static volatile size_t ServiceTaskBuffer_depth;
 static volatile size_t ManchTaskBuffer_depth;
+static volatile size_t OpenThermTaskBuffer_depth;
 #endif
 
 
 /* USER CODE END Variables */
-osThreadId LANPollTaskHandle;
-uint32_t LANPollTaskBuffer[128];
-osStaticThreadDef_t LANPollTaskControlBlock;
-osThreadId PublishTaskHandle;
-uint32_t PublishTaskBuffer[256];
-osStaticThreadDef_t PublishTaskControlBlock;
-osThreadId DiagPrTaskHandle;
-uint32_t DiagPrintTaskBuffer[200];
-osStaticThreadDef_t DiagPrintTaskControlBlock;
-osThreadId ProcSPSTaskHandle;
-uint32_t ProcSPSTaskBuffer[128];
-osStaticThreadDef_t ProcSPSTaskControlBlock;
-osThreadId SubscrbTaskHandle;
-uint32_t SubscribeTaskBuffer[256];
-osStaticThreadDef_t SubscribeTaskControlBlock;
-osThreadId ServiceTaskHandle;
-uint32_t ServiceTaskBuffer[168];
-osStaticThreadDef_t ServiceTaskControlBlock;
-osThreadId ManchTaskHandle;
-uint32_t ManchTaskBuffer[128];
-osStaticThreadDef_t ManchTaskControlBlock;
-osMutexId ETH_Mutex01Handle;
-osStaticMutexDef_t ETH_Mutex01_ControlBlock;
+osThreadId LANPollTaskHandle __attribute__((section (".ccmram")));
+uint32_t LANPollTaskBuffer[128] /*__attribute__((section (".ccmram"))) */;
+osStaticThreadDef_t LANPollTaskControlBlock __attribute__((section (".ccmram")));
+osThreadId PublishTaskHandle __attribute__((section (".ccmram")));
+uint32_t PublishTaskBuffer[256] /* __attribute__((section (".ccmram"))) */;
+osStaticThreadDef_t PublishTaskControlBlock __attribute__((section (".ccmram")));
+osThreadId DiagPrTaskHandle  __attribute__((section (".ccmram")));
+uint32_t DiagPrintTaskBuffer[200] /* __attribute__((section (".ccmram"))) */;
+osStaticThreadDef_t DiagPrintTaskControlBlock __attribute__((section (".ccmram")));
+osThreadId ProcSPSTaskHandle __attribute__((section (".ccmram")));
+uint32_t ProcSPSTaskBuffer[128] /* __attribute__((section (".ccmram"))) */;
+osStaticThreadDef_t ProcSPSTaskControlBlock __attribute__((section (".ccmram")));
+osThreadId SubscrbTaskHandle __attribute__((section (".ccmram")));
+uint32_t SubscribeTaskBuffer[256] /* __attribute__((section (".ccmram"))) */;
+osStaticThreadDef_t SubscribeTaskControlBlock __attribute__((section (".ccmram")));
+osThreadId ServiceTaskHandle __attribute__((section (".ccmram")));
+uint32_t ServiceTaskBuffer[168] /* __attribute__((section (".ccmram"))) */;
+osStaticThreadDef_t ServiceTaskControlBlock __attribute__((section (".ccmram")));
+osThreadId ManchTaskHandle __attribute__((section (".ccmram")));
+uint32_t ManchTaskBuffer[128] /* __attribute__((section (".ccmram"))) */;
+osStaticThreadDef_t ManchTaskControlBlock __attribute__((section (".ccmram")));
+osMutexId ETH_Mutex01Handle __attribute__((section (".ccmram")));
+osStaticMutexDef_t ETH_Mutex01_ControlBlock __attribute__((section (".ccmram")));
+
+/* added 29-Jun-2019 */
+osThreadId OpenThermTaskHandle __attribute__((section (".ccmram")));
+uint32_t OpenThermTaskBuffer[200] /* __attribute__((section (".ccmram"))) */;
+osStaticThreadDef_t OpenThermTaskControlBlock __attribute__((section (".ccmram")));
+
 
 /* Private function prototypes -----------------------------------------------*/
 /* USER CODE BEGIN FunctionPrototypes */
@@ -146,6 +154,8 @@ void Start_ProcSPSTask(void const *argument);
 void Start_SubscribeTask(void const *argument);
 void Start_ServiceTask(void const *argument);
 void Start_ManchTask(void const *argument);
+
+void Start_OpenThermTask(void const *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -255,7 +265,7 @@ __weak void vApplicationTickHook(void)
 /* USER CODE END 3 */
 
 /* USER CODE BEGIN GET_IDLE_TASK_MEMORY */
-static StaticTask_t xIdleTaskTCBBuffer;
+static StaticTask_t xIdleTaskTCBBuffer  __attribute__((section (".ccmram")));
 static StackType_t xIdleStack[configMINIMAL_STACK_SIZE];
 
 void vApplicationGetIdleTaskMemory(StaticTask_t **ppxIdleTaskTCBBuffer,
@@ -345,6 +355,13 @@ void MX_FREERTOS_Init(void)
 	ManchTaskHandle = osThreadCreate(osThread(ManchTask), NULL);
 
 	/* USER CODE BEGIN RTOS_THREADS */
+
+	/* definition and creation of OpenThermTask */
+	osThreadStaticDef(OpenThermTask, Start_OpenThermTask, osPriorityNormal, 0,
+			  200, OpenThermTaskBuffer, &OpenThermTaskControlBlock);
+	OpenThermTaskHandle = osThreadCreate(osThread(OpenThermTask), NULL);
+
+
 /**
  * @todo ADD STACK DEPTH MONITOR
 */
@@ -570,6 +587,23 @@ void Start_ManchTask(void const *argument)
 
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
+
+/**
+* @brief Function implementing the OpenThermTask thread.
+* @param argument: Not used
+* @retval None
+*/
+void Start_OpenThermTask(void const *argument)
+{
+	(void)argument;
+
+	opentherm_task_init();
+
+	for (;;) {
+		opentherm_task_run();
+		vTaskDelay(pdMS_TO_TICKS(1000U));
+	}
+}
 
 /* USER CODE END Application */
 
