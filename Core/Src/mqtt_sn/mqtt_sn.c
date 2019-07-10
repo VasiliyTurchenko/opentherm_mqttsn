@@ -61,12 +61,9 @@ ErrorStatus mqtt_sn_init_context(MQTT_SN_Context_p pcontext, \
 	result = ERROR;
 
 	pcontext->Host_GW_IP = ip_para->pair.ip;
-
 	pcontext->Host_GW_Port = ip_para->pair.port;
-
 	pcontext->Root_Topic = topic_params->rootTopic;
 	pcontext->options = opt;
-
 	pcontext->options.clientID.cstring = (char*)topic_params->pub_client_id_string;
 	pcontext->state = IDLE;
 	pcontext->packetid = 0;
@@ -200,8 +197,7 @@ ErrorStatus mqtt_sn_register_topic(MQTT_SN_Context_p pcontext, uint8_t ldid)
 	buflen = sizeof(buf);
 	uint32_t 	len;
 	len = 0U;
-	uint32_t 	rc;
-	rc = 0U;
+	int		rc = 0;
 
 	MQTTSNString 	topicstr;
 	uint16_t 	topicid;
@@ -426,8 +422,7 @@ ErrorStatus mqtt_sn_subscribe_topic(MQTT_SN_Context_p pcontext, uint8_t ldid)
 	buflen = sizeof(buf);
 	uint32_t 	len;
 	len = 0U;
-	uint32_t 	rc;
-	rc = 0U;
+	int		rc = 0;
 
 #if	defined  (MQTT_SN_SUB_DEBUG_PRINT)
 	xprintf("subscribing...\n");
