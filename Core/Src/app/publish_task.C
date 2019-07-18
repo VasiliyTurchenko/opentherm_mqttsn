@@ -29,8 +29,8 @@
 extern const Media_Desc_t Media0;
 extern osMutexId ETH_Mutex01Handle;
 
-extern tMV *OPENTHERM_getMV(size_t i);
-extern void OPENTHERM_GetNextMVLD(uint16_t *lastreg);
+extern tMV *OPENTHERM_getMV_for_Pub(size_t i);
+extern ldid_t OPENTHERM_GetNextMVLD(uint16_t *start_index);
 
 /* all in the one */
 static const struct MQTT_parameters MQTT_pub_parameters = {
@@ -84,33 +84,24 @@ void publish_task_init(void)
 void publish_task_run(void)
 {
 	i_am_alive(PUB_TASK_MAGIC);
-	HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
 
-	osDelay(100U);
-	HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
-
-	osDelay(100U);
+	while (lan_up() != 1U) {
+		osDelay(pdMS_TO_TICKS(200U));
+	}
 
 	/* initialize pub context */
 	static uint32_t conn_attempts = 0U;
-	if (mqtt_sn_init_context(
-		    &mqttsncontext01,
-		    &MQTT_pub_working_set,
-		    &MQP_IP_cfg) != SUCCESS) {
-		do {
+	while (mqtt_sn_init_context(&mqttsncontext01, &MQTT_pub_working_set,
+				    &MQP_IP_cfg) != SUCCESS) {
 #ifdef MQTT_SN_PUB_DEBUG_PRINT
-			xputs("initializing publish context...\n");
+		xputs("initializing publish context...\n");
 #endif
-			mqtt_sn_deinit_context(&mqttsncontext01);
-		} while (1);
+		mqtt_sn_deinit_context(&mqttsncontext01);
+		osDelay(200U);
+		/* watchdog reboots in case of many unsuccessful inits*/
 	}
 
 	/* context initialized */
-	/* Now we have to connect to the gateway */
-	while ((ETH_Mutex01Handle == NULL) || (lan_up() != 1U)) {
-		osDelay(pdMS_TO_TICKS(50U)); /* wait 50ms and try again */
-	}
-
 	while (mqttsncontext01.state != CONNECTED) {
 		conn_attempts++; /* increment attempts counter */
 #ifdef MQTT_SN_PUB_DEBUG_PRINT
@@ -121,36 +112,41 @@ void publish_task_run(void)
 		}
 		i_am_alive(PUB_TASK_MAGIC);
 		osDelay(200U); /* wait 200ms and try again */
+		HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
 	}
 
 	/* Now we have to register topics */
 	ErrorStatus regresult = ERROR;
-	mqttsncontext01.lastPubSubMV = 0U; /* RESET list */
+	mqttsncontext01.currPubSubMV = 0U; /* RESET list */
 	do {
 		/* request the LD to be registered */
-		OPENTHERM_GetNextMVLD(&mqttsncontext01.lastPubSubMV);
-		if (mqttsncontext01.lastPubSubMV == 0xFFFF) {
+		ldid_t ld_id;
+		ld_id = OPENTHERM_GetNextMVLD(&mqttsncontext01.currPubSubMV);
+		if (mqttsncontext01.currPubSubMV == 0xFFFF) {
+			/* end of array reached */
 			break;
 		}
 #ifdef MQTT_SN_PUB_DEBUG_PRINT
 		xprintf("registering LDID:%d\n", nextLD);
 #endif
-		regresult = mqtt_sn_register_topic(
-			&mqttsncontext01,
-			(uint8_t)mqttsncontext01.lastPubSubMV);
+		regresult = mqtt_sn_register_topic(&mqttsncontext01,
+						   ld_id);
 		if (regresult == ERROR) {
 			break;
 		} /* exit the loop with regresult = error */
+		mqttsncontext01.currPubSubMV++;
 		i_am_alive(PUB_TASK_MAGIC);
+		HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
 		osDelay(50U);
 	} while (1);
 
 	/* here all the topics are registered */
 	/* start periodic part of the task */
 	TickType_t xLastWakeTime;
-	TickType_t xPeriod = pdMS_TO_TICKS(1000U);
+	TickType_t xPeriod = pdMS_TO_TICKS(200U);
 	xLastWakeTime = xTaskGetTickCount(); // get value only once!
 	/* Infinite loop - internal */
+
 	if (regresult == SUCCESS) {
 		ErrorStatus publishresult = ERROR;
 		for (;;) {
@@ -158,7 +154,8 @@ void publish_task_run(void)
 			for (size_t i = 0U; i < MV_ARRAY_LENGTH; i++) {
 				/* get MV */
 
-				tMV *pMV = OPENTHERM_getMV(i); /* mutex lock !*/
+				tMV *pMV = OPENTHERM_getMV_for_Pub(
+					i); /* mutex lock !*/
 
 				if (pMV == NULL) {
 					continue;
@@ -174,22 +171,25 @@ void publish_task_run(void)
 				if (publishresult == ERROR) {
 					break;
 				} /* break the internal infinite loop*/
+				i_am_alive(PUB_TASK_MAGIC);
+				HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port,
+						   GREEN_LED_Pin);
+				vTaskDelayUntil(&xLastWakeTime, xPeriod);
 			}
 
 			/* what to do if publish result != SUCCESS */
 			if (publishresult == ERROR) {
 				break;
 			}
-
-			i_am_alive(PUB_TASK_MAGIC);
-
-			vTaskDelayUntil(&xLastWakeTime, xPeriod);
 		}
 	}
 	/* release sockets */
 	ErrorStatus deinitresult;
 	deinitresult = mqtt_sn_deinit_context(&mqttsncontext01);
 	if (deinitresult == ERROR) {
+#ifdef MQTT_SN_PUB_DEBUG_PRINT
+		xputs("mqtt_sn_deinit_context(pub_context) error!\n");
+#endif
 		/* need reboot */
 		for (;;) {
 			;
@@ -211,7 +211,6 @@ void publish_task_init(void)
 	register_magic(PUB_TASK_MAGIC);
 }
 
-
 /**
  * @brief publish_task_run
  */
@@ -224,10 +223,8 @@ void publish_task_run(void)
 	HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
 
 	osDelay(100U);
-
 }
 
-
 #else
-#error	Neither MASTERBOARD nor SLAVEBOARD defined!
+#error Neither MASTERBOARD nor SLAVEBOARD defined!
 #endif

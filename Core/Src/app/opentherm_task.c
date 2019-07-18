@@ -20,15 +20,22 @@
 
 #include "opentherm_task.h"
 #include "opentherm.h"
+#include "hex_gen.h"
 
 #include "manchester_task.h"
 
 #ifdef MASTERBOARD
 /* to do not include opentherm_master.h */
-extern tMV * OPENTHERM_getMV(size_t i);
+extern tMV * OPENTHERM_getMV_for_Pub(size_t i);
 extern openThermResult_t OPENTHERM_InitMaster(void);
 extern openThermResult_t OPENTHERM_ReadSlave(tMV *const pMV,
 				      uint32_t (*commFun)(uint32_t));
+extern tMV * OPENTHERM_findMVbyLDID(ldid_t ldid);
+
+extern const Media_Desc_t Media0;
+void static create_pub_MV_file(void);
+static ErrorStatus configMVs(void);
+
 #elif SLAVEBOARD
 extern tMV * OPENTHERM_getMV(size_t i);
 extern openThermResult_t OPENTHERM_InitSlave(void);
@@ -53,6 +60,8 @@ extern osThreadId OpenThermTaskHandle;
 TaskHandle_t TaskToNotify_afterTx = NULL;
 TaskHandle_t TaskToNotify_afterRx = NULL;
 extern osThreadId ManchTaskHandle;
+
+bool	opentherm_configured = false;
 
 /**
  * @brief comm_func function used by opentherm to communicate with the slave
@@ -122,7 +131,17 @@ void opentherm_task_init(void)
 		messages_TaskInit_OK(task_name);
 		TaskToNotify_afterTx = OpenThermTaskHandle;
 		TaskToNotify_afterRx = OpenThermTaskHandle;
+	/* config file workaround */
+#ifdef MASTERBOARD
+		while (configMVs() != SUCCESS) {
+			/* error configuration read */
+			xputs("Existing PUB_MV file configuration failed! Creating a new PUB_MV.\n");
+			create_pub_MV_file();
+		}
+		xputs("Report types for MVs are set up!\n");
+#endif
 	}
+	opentherm_configured = true;
 }
 
 #ifdef MASTERBOARD
@@ -135,7 +154,7 @@ void opentherm_task_run(void)
 	openThermResult_t	res;
 	for (size_t i = 0U; i < MV_ARRAY_LENGTH; i++) {
 	i_am_alive(OPENTHERM_TASK_MAGIC);
-		tMV *pMV = OPENTHERM_getMV(i);
+		tMV *pMV = OPENTHERM_getMV_for_Pub(i);
 		if (pMV == NULL) {
 			xputs("ERROR: pMV == NULL\n");
 			continue;
@@ -152,4 +171,128 @@ void opentherm_task_run(void)
 	i_am_alive(OPENTHERM_TASK_MAGIC);
 }
 #else
+#endif
+
+#ifdef MASTERBOARD
+
+/* template MV config string */
+static const char template_str[] = "00000:SPGI\n";
+static const size_t rec_len = sizeof(template_str);
+static const char sp_[] = "SP__\n";
+static const char gi_[] = "__GI\n";
+static const char spgi_[] = "SPGI\n";
+static const char no_[] = "NO__";
+
+/**
+ * @brief configMVs configures ReportType field of every MV
+ * @return
+ */
+static ErrorStatus configMVs(void)
+{
+	ErrorStatus retVal = ERROR;
+	size_t	bwr;	/* bytes was read */
+	char read_rec[rec_len];
+	size_t	pos = 0U;
+	size_t configured = 0U;
+
+	do {
+		if ( (ReadBytes(&Media0,
+				"PUB_MV",
+				pos,
+				rec_len,
+				&bwr,
+				(uint8_t*)&read_rec) == FR_OK) && (bwr == rec_len) ){
+			/* one record was read */
+			/* parse record */
+			enum tReport rep_type;
+
+			if (strcmp(sp_, &read_rec[6]) == 0) {
+				rep_type = SP;
+			} else if ((strcmp(gi_, &read_rec[6]) == 0)) {
+				rep_type = GI;
+			} else if ((strcmp(spgi_, &read_rec[6]) == 0)) {
+				rep_type = SP_GI;
+			} else {
+				rep_type = Inact;
+			}
+
+			ldid_t ldid;
+			ldid = (ldid_t)adec2uint16(read_rec, 5U);
+
+			/* find relevant MV */
+			tMV * targetMV = OPENTHERM_findMVbyLDID(ldid);
+			if (targetMV != NULL) {
+				targetMV->ReportType = rep_type;
+			}
+			pos = pos + rec_len;
+			configured++;
+
+		} else {
+			break;
+		}
+	} while (bwr == rec_len);
+	if (configured == MV_ARRAY_LENGTH) {
+		retVal = SUCCESS;
+	}
+	return retVal;
+}
+
+/**
+ * @brief create_pub_MV_file creates new PUB_MV file
+ */
+static void create_pub_MV_file(void)
+{
+	char	outstr[rec_len];
+
+	strncpy((char*)outstr, template_str, sizeof(template_str));
+
+	size_t estimated_fsize = MV_ARRAY_LENGTH * (sizeof(template_str));
+	const char * pub_mv = "PUB_MV";
+
+	if (DeleteFile(&Media0, pub_mv) != FR_OK) {
+		xputs(task_name);
+		xputs("Can not delete ");
+		xputs(pub_mv);
+		xputs(" \n");
+	}
+
+	if (AllocSpaceForFile(&Media0, pub_mv,estimated_fsize) != FR_OK) {
+		xputs(task_name);
+		xputs(pub_mv);
+		xputs(" file creation error!\n");
+	} else {
+	/* write entry by entry */
+		size_t fpos = 0U;
+		size_t bw = 0U;
+		size_t btw = sizeof(template_str);
+
+		for (size_t i = 0; i < MV_ARRAY_LENGTH; i++) {
+
+			tMV * pMV = OPENTHERM_getMV_for_Pub(i);
+
+			uint16_to_asciiz((uint16_t)pMV->LD_ID, (char*)outstr);
+
+			if(pMV->ReportType == GI) {
+				strncpy(&outstr[6], gi_, sizeof(gi_));
+			} else if (pMV->ReportType == SP) {
+				strncpy(&outstr[6], sp_, sizeof(sp_));
+			} else if (pMV->ReportType == SP_GI) {
+				strncpy(&outstr[6], spgi_, sizeof(spgi_));
+			} else {
+				strncpy(&outstr[6], no_, sizeof(no_));
+			}
+
+			if ((WriteBytes(&Media0, pub_mv, fpos, btw, &bw, (const uint8_t*)outstr) != FR_OK) ||
+				(bw != btw) ) {
+				xputs(task_name);
+				xputs(pub_mv);
+				xputs(" file write error!\n");
+				break;
+			} else {
+				fpos = fpos + btw;
+			}
+		}
+
+	}
+}
 #endif

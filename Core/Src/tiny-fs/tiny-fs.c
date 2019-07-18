@@ -1217,7 +1217,7 @@ FRESULT f_write(FIL *fp, void *const buff, UINT btw, UINT *bw)
 
 	to_write = ((int32_t)btw <= avail) ? btw : (uint32_t)avail;
 
-	if (fp->media->writeFunc((uint8_t*)buff, fp->fileDir.FileAddress, to_write) ==
+	if (fp->media->writeFunc((uint8_t*)buff, fp->fileDir.FileAddress + fp->filePtr, to_write) ==
 	    ERROR) {
 		retVal = FR_DISK_ERR;
 		goto fExit;
@@ -1280,7 +1280,7 @@ FRESULT f_read(FIL *fp, void *buff, UINT btr, UINT *br)
 	uint32_t to_read;
 	to_read = ((int32_t)btr <= avail) ? btr : (uint32_t)avail;
 
-	if (fp->media->readFunc((uint8_t*)buff, fp->fileDir.FileAddress, to_read) ==
+	if (fp->media->readFunc((uint8_t*)buff, fp->fileDir.FileAddress + fp->filePtr, to_read) ==
 	    ERROR) {
 		retVal = FR_DISK_ERR;
 		goto fExit;

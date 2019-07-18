@@ -99,6 +99,9 @@ osStaticMutexDef_t CRC_Mutex_ControlBlock __attribute__((section (".ccmram")));
 osMutexId ManchesterTimer01MutexHandle __attribute__((section (".ccmram")));
 osStaticMutexDef_t ManchesterTimer01Mutex_ControlBlock __attribute__((section (".ccmram")));
 
+osMutexId xfunc_outMutexHandle  __attribute__((section (".ccmram")));
+osStaticMutexDef_t xfunc_outMutex_ControlBlock __attribute__((section (".ccmram")));
+
 #ifdef DEBUG
 static volatile size_t LANPollTaskBuffer_depth;
 static volatile size_t PublishTaskBuffer_depth;
@@ -147,15 +150,15 @@ osStaticThreadDef_t OpenThermTaskControlBlock __attribute__((section (".ccmram")
 
 /* USER CODE END FunctionPrototypes */
 
-void Start_LANPollTask(void const *argument);
-void Start_PublishTask(void const *argument);
-void Start_DiagPrintTask(void const *argument);
-void Start_ProcSPSTask(void const *argument);
-void Start_SubscribeTask(void const *argument);
-void Start_ServiceTask(void const *argument);
-void Start_ManchTask(void const *argument);
+void __attribute__ ((noreturn)) Start_LANPollTask(void const *argument);
+void __attribute__ ((noreturn)) Start_PublishTask(void const *argument);
+void __attribute__ ((noreturn)) Start_DiagPrintTask(void const *argument);
+void __attribute__ ((noreturn)) Start_ProcSPSTask(void const *argument);
+void __attribute__ ((noreturn)) Start_SubscribeTask(void const *argument);
+void __attribute__ ((noreturn)) Start_ServiceTask(void const *argument);
+void __attribute__ ((noreturn)) Start_ManchTask(void const *argument);
 
-void Start_OpenThermTask(void const *argument);
+void __attribute__ ((noreturn)) Start_OpenThermTask(void const *argument);
 
 void MX_FREERTOS_Init(void); /* (MISRA C 2004 rule 8.1) */
 
@@ -296,6 +299,9 @@ void MX_FREERTOS_Init(void)
 	ETH_Mutex01Handle = osMutexCreate(osMutex(ETH_Mutex01));
 
 	/* USER CODE BEGIN RTOS_MUTEX */
+
+	osMutexStaticDef(xfunc_outMutex, &xfunc_outMutex_ControlBlock);
+	xfunc_outMutexHandle = osMutexCreate(osMutex(xfunc_outMutex));
 
 	/* access mutex to the single simultaneous file  tiny_fs */
 	osMutexStaticDef(FS_Mutex01, &FS_Mutex01_ControlBlock);
@@ -443,7 +449,7 @@ void MX_FREERTOS_Init(void)
   * @retval None
   */
 /* USER CODE END Header_Start_LANPollTask */
-void Start_LANPollTask(void const *argument)
+void __attribute__ ((noreturn)) Start_LANPollTask(void const *argument)
 {
 	/* USER CODE BEGIN StartLAN_Poll_Task */
 	(void)argument;
@@ -464,15 +470,19 @@ void Start_LANPollTask(void const *argument)
 * @retval None
 */
 /* USER CODE END Header_Start_PublishTask */
-void Start_PublishTask(void const *argument)
+void __attribute__ ((noreturn)) Start_PublishTask(void const *argument)
 {
 	/* USER CODE BEGIN Start_PublishTask */
 	(void)argument;
+
+	while (!opentherm_configured) {
+		osDelay(pdMS_TO_TICKS(200U));
+	}
+
 	publish_task_init();
 	/* Infinite loop */
 	for (;;) {
 		publish_task_run();
-		osDelay(1);
 	}
 	/* USER CODE END Start_PublishTask */
 }
@@ -484,7 +494,7 @@ void Start_PublishTask(void const *argument)
 * @retval None
 */
 /* USER CODE END Header_Start_DiagPrintTask */
-void Start_DiagPrintTask(void const *argument)
+void __attribute__ ((noreturn)) Start_DiagPrintTask(void const *argument)
 {
 	/* USER CODE BEGIN Start_DiagPrintTask */
 	(void)argument;
@@ -509,7 +519,7 @@ void Start_DiagPrintTask(void const *argument)
 * @retval None
 */
 /* USER CODE END Header_Start_ProcSPSTask */
-void Start_ProcSPSTask(void const *argument)
+void __attribute__ ((noreturn)) Start_ProcSPSTask(void const *argument)
 {
 	/* USER CODE BEGIN Start_ProcSPSTask */
 	(void)argument;
@@ -529,7 +539,7 @@ void Start_ProcSPSTask(void const *argument)
 * @retval None
 */
 /* USER CODE END Header_Start_SubscribeTask */
-void Start_SubscribeTask(void const *argument)
+void __attribute__ ((noreturn)) Start_SubscribeTask(void const *argument)
 {
 	/* USER CODE BEGIN Start_SubscribeTask */
 	(void)argument;
@@ -549,7 +559,7 @@ void Start_SubscribeTask(void const *argument)
 * @retval None
 */
 /* USER CODE END Header_Start_ServiceTask */
-void Start_ServiceTask(void const *argument)
+void __attribute__ ((noreturn)) Start_ServiceTask(void const *argument)
 {
 	/* USER CODE BEGIN Start_ServiceTask */
 	(void)argument;
@@ -569,7 +579,7 @@ void Start_ServiceTask(void const *argument)
 * @retval None
 */
 /* USER CODE END Header_Start_ManchTask */
-void Start_ManchTask(void const *argument)
+void __attribute__ ((noreturn)) Start_ManchTask(void const *argument)
 {
 	/* USER CODE BEGIN Start_ManchTask */
 
@@ -593,7 +603,7 @@ void Start_ManchTask(void const *argument)
 * @param argument: Not used
 * @retval None
 */
-void Start_OpenThermTask(void const *argument)
+void __attribute__ ((noreturn)) Start_OpenThermTask(void const *argument)
 {
 	(void)argument;
 

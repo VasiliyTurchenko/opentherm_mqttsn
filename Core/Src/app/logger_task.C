@@ -94,7 +94,7 @@ void logger_task_init(void)
  */
 void logger_task_run(void)
 {
-	Transmit(pdiagsoc);
+	Transmit_RTOS(pdiagsoc);
 	i_am_alive(LOGGER_TASK_MAGIC);
 }
 

@@ -13,6 +13,8 @@
  extern "C" {
 #endif
 
+#include "stdbool.h"
+
 void opentherm_task_init(void);
 void opentherm_task_run(void);
 
@@ -20,6 +22,6 @@ void opentherm_task_run(void);
  }
 #endif
 
-
+extern bool	opentherm_configured;
 
 #endif // OPENTHERM_TASK_H

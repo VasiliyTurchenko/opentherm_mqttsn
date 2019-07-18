@@ -29,6 +29,9 @@ FRESULT WriteBytes(const Media_Desc_t *const media,
 		    size_t * const bw,
 		    const uint8_t * buf);
 
+FRESULT AllocSpaceForFile(const Media_Desc_t *const media,
+			  const char *name,
+			  size_t req_size);
 
 #ifdef __cplusplus
  }

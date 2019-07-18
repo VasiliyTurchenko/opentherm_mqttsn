@@ -38,9 +38,15 @@
 #define TFTP_OPCODE_LEN         2U
 #define TFTP_BLKNUM_LEN         2U
 #define TFTP_ERRCODE_LEN        2U
-//#define TFTP_DATA_LEN_MAX       512U
+
+#ifdef MASTERBOARD
+#define TFTP_DATA_LEN_MAX       512U
+#elif SLAVEBOARD
 //#define TFTP_DATA_LEN_MAX       128U
 #define TFTP_DATA_LEN_MAX       ((FS_CLUSTER_SIZE) * 8)
+#else
+	#error "Define MASTERBOARD or SLAVEBOARD"
+#endif
 
 #define TFTP_DATA_PKT_HDR_LEN   ( TFTP_OPCODE_LEN + TFTP_BLKNUM_LEN )
 #define TFTP_ERR_PKT_HDR_LEN    ( TFTP_OPCODE_LEN + TFTP_ERRCODE_LEN )

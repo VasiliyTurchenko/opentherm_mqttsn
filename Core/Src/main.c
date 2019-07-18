@@ -197,11 +197,13 @@ int main(void)
 	xputs("Indep. watchdog initialized.\n");
 	xputs("Starting RTOS...\n");
 
-	Transmit_non_RTOS = false;
-	/* USER CODE END 2 */
-
 	/* Call init function for freertos objects (in freertos.c) */
 	MX_FREERTOS_Init();
+
+	HAL_Delay(200U);
+	Transmit_non_RTOS = false;
+	xfunc_out = myxfunc_out_RTOS; /* diagnostic print */
+
 	/* Start scheduler */
 	osKernelStart();
 

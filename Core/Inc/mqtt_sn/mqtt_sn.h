@@ -28,6 +28,7 @@
 #include "MQTTSNPacket\MQTTSNPacket.h"
 #include "MQTTSNPacket\MQTTSNConnect.h"
 
+#include "opentherm_daq_def.h"
 #include "lan.h"
 
 
@@ -54,7 +55,7 @@ typedef	struct MQTT_SN_Context
 		TickType_t	time_OK;		/*!< timestamp of the last successful event*/
 		uint16_t	last_procd_packet_id;	/*!< last processed packetid */
 
-		uint16_t	lastPubSubMV;		/*!< last pub/sub MV index */
+		uint16_t	currPubSubMV;		/*!< current pub/sub MV index */
 
 	}	MQTT_SN_Context_t;			/*!< Context for MQTT-SN connection */
 
@@ -76,7 +77,7 @@ ErrorStatus mqtt_sn_init_context(MQTT_SN_Context_p pcontext, \
   */
 ErrorStatus mqtt_sn_deinit_context(MQTT_SN_Context_p pcontext);
 
-ErrorStatus mqtt_sn_register_topic(MQTT_SN_Context_p pcontext, uint8_t ldid);
+ErrorStatus mqtt_sn_register_topic(MQTT_SN_Context_p pcontext, ldid_t ldid);
 
 ErrorStatus mqtt_sn_publish_topic(MQTT_SN_Context_p pcontext, uint16_t topicid, const char *topicstring);
 
@@ -87,7 +88,7 @@ ErrorStatus mqtt_sn_publish_topic(MQTT_SN_Context_p pcontext, uint16_t topicid, 
   * @param ldid to be subscribed
   * @return ErrorStatus SUCCESS or ERROR
   */
-ErrorStatus mqtt_sn_subscribe_topic(MQTT_SN_Context_p pcontext, uint8_t ldid);
+ErrorStatus mqtt_sn_subscribe_topic(MQTT_SN_Context_p pcontext, ldid_t ldid);
 
 /** polls network for the topics subscribed
   * @param pcontext the pointer to the context used for subscription

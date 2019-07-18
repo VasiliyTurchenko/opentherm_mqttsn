@@ -124,3 +124,48 @@ fExit:
 	retVal = (retVal != FR_OK) ? retVal : res;
 	return retVal;
 }
+
+/**
+ * @brief AllocSpaceForFile allocates spase on the media for file
+ * @param media pointer to media descriptor
+ * @param name filename
+ * @param req_size requested size in bytes
+ * @return FRESULT
+ */
+FRESULT AllocSpaceForFile(const Media_Desc_t *const media, const char *name,
+		   size_t req_size)
+{
+	FRESULT retVal = FR_INVALID_PARAMETER;
+	FRESULT res;
+	if ((media == NULL) || (name == NULL) || (media->mode == MEDIA_RO)) {
+		return retVal;
+	}
+	fHandle_t file;
+	file.media = (Media_Desc_t *)media;
+	char cut_name[MAX_FILENAME_LEN + 1];
+	strncpy(cut_name, name, MAX_FILENAME_LEN);
+	cut_name[MAX_FILENAME_LEN] = '\0';
+
+	do {
+		retVal = NewFile(&file, cut_name, req_size, FModeWrite);
+		if (retVal == FR_TOO_MANY_OPEN_FILES) {
+			if (xTaskGetSchedulerState() !=
+			    taskSCHEDULER_NOT_STARTED) {
+				vTaskDelay(pdMS_TO_TICKS(10U));
+			} else {
+				break;
+			}
+		} else {
+			break;
+		}
+	} while (1);
+
+	if (retVal != FR_OK) {
+		goto fExit;
+	}
+fExit:
+	res = f_close(&file);
+	retVal = (retVal != FR_OK) ? retVal : res;
+	return retVal;
+}
+

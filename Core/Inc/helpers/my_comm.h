@@ -58,28 +58,32 @@ USART Speed
 
 extern uint8_t TxBuf1[BUFSIZE];
 extern uint8_t TxBuf2[BUFSIZE];
-extern void *pActTxBuf;
-extern void *pXmitTxBuf;
-extern uint8_t RxBuf[BUFSIZE];
-extern void *pRxBuf;
+extern volatile void *pActTxBuf;
+extern volatile void *pXmitTxBuf;
+// extern uint8_t RxBuf[BUFSIZE];
+// extern void *pRxBuf;
 
-extern size_t TxTail;
-extern size_t RxTail;
-extern uint8_t ActiveTxBuf;
+extern volatile size_t TxTail;
+// extern size_t RxTail;
+// extern uint8_t ActiveTxBuf;
 
-extern uint8_t XmitState;
-extern uint8_t ActBufState;
-extern bool TransmitFuncRunning;
+extern volatile uint8_t XmitState;
+extern volatile uint8_t ActBufState;
+extern volatile bool TransmitFuncRunning;
 // extern	HAL_StatusTypeDef	XmitStatus;
 
-extern ErrorStatus XmitError;
+extern volatile ErrorStatus XmitError;
 
-extern size_t MaxTail;
+extern volatile size_t MaxTail;
 
 ErrorStatus InitComm(void);
 ErrorStatus Transmit(const void *ptr);
-void myxfunc_out(unsigned char c);
+ErrorStatus Transmit_RTOS(const void *ptr);
+
+void myxfunc_out_dummy(unsigned char c);
+void myxfunc_out_RTOS(unsigned char c);
 void myxfunc_out_no_RTOS(unsigned char c);
+
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart);

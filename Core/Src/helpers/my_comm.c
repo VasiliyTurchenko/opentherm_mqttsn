@@ -5,6 +5,7 @@
   * @brief   my_comm.c
   * @date    30-12-2017
   * @modified 20-Jan-2019
+  * @modified 11-Jul-2019
   * @verbatim
   ==============================================================================
 		  ##### How to use this driver #####
@@ -12,9 +13,6 @@
   ==============================================================================
   * @endverbatim
   */
-
-#include "FreeRTOS.h"
-#include "task.h"
 
 #include "cmsis_os.h"
 
@@ -24,43 +22,31 @@
 
 uint8_t TxBuf1[BUFSIZE];
 uint8_t TxBuf2[BUFSIZE];
-void *pActTxBuf;
-void *pXmitTxBuf;
+volatile void *pActTxBuf;
+volatile void *pXmitTxBuf;
+volatile size_t TxTail;
 
-#ifdef USE_RX
-uint8_t RxBuf[BUFSIZE];
-void *pRxBuf;
-#endif
+//volatile uint8_t ActiveTxBuf;
 
-size_t TxTail;
+volatile uint8_t XmitState;
+volatile uint8_t ActBufState;
+volatile bool TransmitFuncRunning;
 
-#ifdef USE_RX
-size_t RxTail;
-#endif
+volatile ErrorStatus XmitError = SUCCESS;
 
-uint8_t ActiveTxBuf;
+volatile size_t MaxTail = 0U;
 
-uint8_t XmitState;
-uint8_t ActBufState;
-bool TransmitFuncRunning;
+/* Tx buffers access mutex */
+/* defined in freertos.c */
+extern osMutexId xfunc_outMutexHandle;
 
-ErrorStatus XmitError = SUCCESS;
+extern osThreadId DiagPrTaskHandle;
 
-size_t MaxTail = 0U;
-
-/* Tx buffers access mutexes */
-extern osMutexId TxBuf1_MutexHandle;
-extern osMutexId TxBuf2_MutexHandle;
-
-/* mutex of the buffer which is being currently sending */
-static osMutexId lastRelMutex = NULL;
-
-/* mutex of the xfunc_out's buffer */
-static osMutexId xfunc_outMutex = NULL;
+/******************************** initialisation functions ********************/
 
 /**
   * @brief InitComm initializes buffers and pointers
-  * @note
+  * @note Non-RTOS function
   * @param  none
   * @retval none
   */
@@ -71,33 +57,77 @@ ErrorStatus InitComm(void)
 	for (size_t i = 0U; i < BUFSIZE; i++) {
 		TxBuf1[i] = 0U;
 		TxBuf2[i] = 0U;
-#ifdef USE_RX
-		RxBuf[i] = 0U;
-#endif
 	}
-
 	TxTail = 0U;
 	pActTxBuf = &TxBuf1;
 	pXmitTxBuf = &TxBuf2;
-#ifdef USE_RX
-	pRxBuf = &RxBuf;
-#endif
-	ActiveTxBuf = BUF1_ACTIVE;
 	ActBufState = STATE_UNLOCKED;
 	XmitState = STATE_UNLOCKED;
-#ifdef USE_RX
-	RxTail = 0U;
-#endif
-
 	result = SUCCESS;
 	return result;
 }
 /* end of the function  InitComm */
 
+/******************************** xfunc_out functions ********************/
+
+/**
+ * @brief myxfunc_out_dummy does nothing
+  * @note   helper for xprintf
+  * @param  char
+  * @retval none
+  */
+void myxfunc_out_dummy(unsigned char c)
+{
+	(void)c;
+}
+
+/**
+ * @brief myxfunc_out_no_RTOS puts the char to the xmit buffer
+  * @note   helper for xprintf
+  * @param  char
+  * @retval none
+  */
+void myxfunc_out_no_RTOS(unsigned char c)
+{
+	if (ActBufState == STATE_UNLOCKED) {
+		ActBufState = STATE_LOCKED;
+		MaxTail = (TxTail > MaxTail) ? TxTail : MaxTail;
+		if (TxTail < BUFSIZE) {
+			*((uint8_t *)pActTxBuf + TxTail) = c;
+			TxTail++;
+		}
+		ActBufState = STATE_UNLOCKED;
+	}
+}
+
+/**
+  * @brief  myxfunc_out_RTOS puts the char to the xmit buffer
+  * @note   helper for xprintf
+  * @param  char
+  * @retval none
+  */
+void myxfunc_out_RTOS(unsigned char c)
+{
+	while (osMutexWait(xfunc_outMutexHandle, 0) != osOK) {
+		//		taskYIELD();
+		vTaskDelay(pdMS_TO_TICKS(1U));
+	}
+	if (TxTail < BUFSIZE) {
+		MaxTail = (TxTail > MaxTail) ? TxTail : MaxTail;
+		*((uint8_t *)pActTxBuf + TxTail) = c;
+		TxTail++;
+	}
+	osMutexRelease(xfunc_outMutexHandle);
+}
+/* end of the function myxfunc_out_RTOS */
+
+/******************************** transmit functions ********************/
+
 /**
   * @brief  Transmit invokes transmit procedure
   * @param  ptr is a pointer to udp socket
   * @note   if ther is no sockets, ptr must be NULL
+  * @note   non-RTOS function
   * @retval ERROR or SUCCESS
   */
 ErrorStatus Transmit(const void *ptr)
@@ -158,7 +188,7 @@ ErrorStatus Transmit(const void *ptr)
 			&huart3, (uint8_t *)pXmitTxBuf, (uint16_t)tmptail);
 		result = (XmitStatus == HAL_ERROR) ? ERROR : SUCCESS;
 	} else {
-		result = write_socket((socket_p)ptr, pXmitTxBuf,
+		result = write_socket((socket_p)ptr, (uint8_t*)pXmitTxBuf,
 				      (int32_t)tmptail);
 
 		XmitState = STATE_UNLOCKED;
@@ -168,115 +198,6 @@ fExit:
 	return result;
 }
 /* end of the function Transmit() */
-
-/**
-  * @brief  myxfunc_out puts the char to the xmit buffer
-  * @note   helper for xprintf
-  * @param  char
-  * @retval none
-  */
-void myxfunc_out(unsigned char c)
-{
-	while (ActBufState == STATE_LOCKED) {
-		/* alas, the active buffer is locked */
-		taskYIELD();
-	}
-	if (ActBufState == STATE_UNLOCKED) {
-		ActBufState = STATE_LOCKED; /* temporary lock the buffer */
-
-		MaxTail = (TxTail > MaxTail) ? TxTail : MaxTail;
-
-		while (TxTail == BUFSIZE) {
-			ActBufState = STATE_UNLOCKED;
-			taskYIELD();
-			ActBufState = STATE_LOCKED;
-		}
-		*((uint8_t *)pActTxBuf + TxTail) = c;
-		TxTail++;
-		ActBufState = STATE_UNLOCKED;
-	}
-}
-/* end of the function  */
-
-/**
- * @brief myxfunc_out_no_RTOS puts the char to the xmit buffer
-  * @note   helper for xprintf
-  * @param  char
-  * @retval none
-  */
-void myxfunc_out_no_RTOS(unsigned char c)
-{
-	if (ActBufState == STATE_UNLOCKED) {
-		ActBufState = STATE_LOCKED;
-		MaxTail = (TxTail > MaxTail) ? TxTail : MaxTail;
-		if (TxTail < BUFSIZE) {
-			*((uint8_t *)pActTxBuf + TxTail) = c;
-			TxTail++;
-		}
-		ActBufState = STATE_UNLOCKED;
-	}
-}
-
-
-
-
-/**
- * @brief HAL_UART_TxCpltCallback
- * @param huart
- */
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
-{
-	if (huart == &huart3) {
-		/* transmit completed! */
-		XmitState = STATE_UNLOCKED;
-
-		osMutexRelease(lastRelMutex);
-		lastRelMutex = NULL;
-
-
-	}
-}
-/* end of HAL_UART_TxCpltCallback() */
-
-
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
-{
-	static uint32_t ec = 0U;
-	ec = huart->ErrorCode;
-
-	UNUSED(ec);
-}
-
-/**
- * @brief my_comm_setup_mutexes
- * @note must be called once right befor switching to RTOS xfunc_out
- */
-void my_comm_setup_mutexes(void)
-{
-	if (xfunc_outMutex == NULL) {
-		xfunc_outMutex = (pActTxBuf == TxBuf1) ? TxBuf1_MutexHandle : TxBuf2_MutexHandle;
-	}
-}
-
-
-/**
-  * @brief  myxfunc_out_RTOS puts the char to the xmit buffer
-  * @note   helper for xprintf
-  * @param  char
-  * @retval none
-  */
-void myxfunc_out_RTOS(unsigned char c)
-{
-	osMutexWait(xfunc_outMutex, osWaitForever);
-	if (TxTail < BUFSIZE) {
-		MaxTail = (TxTail > MaxTail) ? TxTail : MaxTail;
-		*((uint8_t *)pActTxBuf + TxTail) = c;
-		TxTail++;
-	}
-	osMutexRelease(xfunc_outMutex);
-}
-/* end of the function myxfunc_out_RTOS */
-
 
 /**
   * @brief  Transmit_RTOS invokes transmit procedure
@@ -290,59 +211,108 @@ ErrorStatus Transmit_RTOS(const void *ptr)
 	static HAL_StatusTypeDef XmitStatus;
 
 	if (TxTail == (size_t)0U) {
-		goto fExit;	/* nothing to do */
+		goto fExit; /* nothing to do */
 	}
 
-	/* take the mutexes */
-	osMutexWait(TxBuf1_MutexHandle, osWaitForever);
-	osMutexWait(TxBuf2_MutexHandle, osWaitForever);
+	/* temporary raise task priority */
+	UBaseType_t task_prio;
+	task_prio = uxTaskPriorityGet(DiagPrTaskHandle);
+	/* set the new maximal priority */
+	vTaskPrioritySet(DiagPrTaskHandle,
+			 ((UBaseType_t)configMAX_PRIORITIES - (UBaseType_t)1U));
 
-	// there is something to transmit
+	/* take the first mutex */
+	if (osMutexWait(xfunc_outMutexHandle, 0) != osOK) {
+		vTaskPrioritySet(DiagPrTaskHandle, task_prio);
+		goto fExit; /* try next time*/
+	}
+
 	size_t tmptail;
 	tmptail = TxTail;
 
-	osMutexId xmitMutex = NULL;
-
 	if (pActTxBuf == TxBuf1) {
 		pActTxBuf = TxBuf2;
-		TxTail = 0U; // RESET index
+		TxTail = 0U;
 		pXmitTxBuf = TxBuf1;
-		xfunc_outMutex = TxBuf2_MutexHandle;
-		xmitMutex = TxBuf1_MutexHandle;
-		osMutexRelease(TxBuf2_MutexHandle);
+
+		osMutexRelease(xfunc_outMutexHandle);
 
 	} else if (pActTxBuf == TxBuf2) {
 		pActTxBuf = TxBuf1;
-		TxTail = 0U; // RESET index
+		TxTail = 0U;
 		pXmitTxBuf = TxBuf2;
-		xfunc_outMutex = TxBuf1_MutexHandle;
-		xmitMutex = TxBuf2_MutexHandle;
-		osMutexRelease(TxBuf1_MutexHandle);
+
+		osMutexRelease(xfunc_outMutexHandle);
 
 	} else {
 		/* error */
-		osMutexRelease(xmitMutex);
-		xmitMutex = NULL;
+		osMutexRelease(xfunc_outMutexHandle);
+		vTaskPrioritySet(DiagPrTaskHandle, task_prio);
 		goto fExit;
 	}
 
-	// here all the conditions are OK. let's send!
-	if (ptr == NULL) {
+	/* restore usual priority */
+	vTaskPrioritySet(DiagPrTaskHandle, task_prio);
+
+	/* here all the conditions are OK. let's send! */
+	if (ptr != NULL) {
+		result = write_socket((socket_p)ptr,
+					pXmitTxBuf,
+					(int32_t)tmptail);
+
+		XmitState = STATE_UNLOCKED;
+	} else {
+		/* transmit over USART */
 		XmitStatus = HAL_UART_Transmit_DMA(
 			&huart3, (uint8_t *)pXmitTxBuf, (uint16_t)tmptail);
 		result = (XmitStatus == HAL_ERROR) ? ERROR : SUCCESS;
-		/* mutex will be released by ISR */
 
-	} else {
-		result = write_socket((socket_p)ptr, pXmitTxBuf,
-				      (int32_t)tmptail);
-		/* we can do it now */
-		osMutexRelease(xmitMutex);
-		xmitMutex = NULL;
+		/* we have to wait a notification INSTEAD ! */
+		static uint32_t notified_val = 0U;
+		if (xTaskNotifyWait(ULONG_MAX, ULONG_MAX, &notified_val,
+				    portMAX_DELAY) == pdTRUE) {
+			if (notified_val != 1U) {
+				// error!!!
+			}
+		}
 	}
 fExit:
 	return result;
 }
 /* end of the function Transmit_RTOS() */
+
+/**
+ * @brief HAL_UART_TxCpltCallback
+ * @param huart
+ */
+void my_comm_HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
+{
+	if (huart == &huart3) {
+		/* transmit completed! */
+		XmitState = STATE_UNLOCKED;
+
+		/* usart1 IRQ priority must be lower than MAX_SYSCALL_...._PRIORITY */
+		BaseType_t xHigherPriorityTaskWoken;
+
+		if (xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED) {
+			if (xTaskNotifyFromISR(DiagPrTaskHandle, 1U,
+					       eSetValueWithOverwrite,
+					       &xHigherPriorityTaskWoken) !=
+			    pdPASS) {
+				// error
+			}
+			portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+		}
+	}
+}
+/* end of HAL_UART_TxCpltCallback() */
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+	static uint32_t ec = 0U;
+	ec = huart->ErrorCode;
+
+	UNUSED(ec);
+}
 
 /* ############################### end of file ############################### */
