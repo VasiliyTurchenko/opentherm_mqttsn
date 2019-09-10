@@ -129,6 +129,8 @@ void Error_Handler(void);
 
 #define MANCHESTER_Timer	htim2
 
+#define LAN_NOTIFICATION	1
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

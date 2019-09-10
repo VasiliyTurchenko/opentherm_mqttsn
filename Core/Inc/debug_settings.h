@@ -15,7 +15,7 @@
 
 /* MQTT-SN PUB section */
 
-//#define	MQTT_SN_PUB_DEBUG_PRINT
+#define	MQTT_SN_PUB_DEBUG_PRINT
 
 /* MQTT-SN SUB section */
 
@@ -36,5 +36,9 @@
 /* DAQ section */
 
 //#define DAQ_DEBUG_PRINT
+
+/* Manchester task section */
+//#define MANCH_TASK_DEBUG_PRINT 1
+#define MANCH_TASK_DEBUG_PRINT 0
 
 /* ################################### E.O.F. ################################################### */

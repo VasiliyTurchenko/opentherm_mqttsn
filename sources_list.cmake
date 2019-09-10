@@ -25,6 +25,10 @@ set(GROUP_CORE_SRC_HELPERS
 		Core/Src/helpers/opentherm_wrappers.c
 )
 
+set(GROUP_CORE_SRC_JSON
+	        Core/Src/json/json.c
+)
+
 set(GROUP_CORE_SRC_LAN
 	        Core/Src/lan/enc28j60.c
 		Core/Src/lan/lan.c
@@ -113,6 +117,7 @@ include_directories(Core/Inc/ntp)
 include_directories(Core/Inc/nvmem)
 include_directories(Core/Inc/tftp)
 include_directories(Core/Inc/tiny-fs)
+include_directories(Core/Inc/json)
 
 include_directories(Drivers/CMSIS/Include)
 
@@ -133,6 +138,7 @@ set(LIST_OF_SOURCES
 		${GROUP_CORE_SRC_NVMEM}
 		${GROUP_CORE_SRC_TFTP}
 		${GROUP_CORE_SRC_TINY-FS}
+		${GROUP_CORE_SRC_JSON}
 #		${GROUP_DRIVERS_STM32F1XX_HAL_DRIVER_SRC}
                 ${GROUP_MIDDLEWARES_THIRD_PARTY_FREERTOS_SOURCE}
 		${GROUP_MIDDLEWARES_THIRD_PARTY_FREERTOS_SOURCE_CMSIS_RTOS}

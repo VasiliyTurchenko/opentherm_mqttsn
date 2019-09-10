@@ -16,6 +16,7 @@
 
 #include "manchester.h"
 #include "manchester_task.h"
+#include "debug_settings.h"
 
 /* manchester configuration */
 static const size_t startBits = 1U;
@@ -120,10 +121,10 @@ void manchester_task_run(void)
 
 			result = MANCHESTER_Transmit(&manchester_Tx_data, &manchester_context);
 
-
+#if (MANCH_TASK_DEBUG_PRINT == 1)
 			xputs(task_name);
 			xputs(" TX>>\n");
-
+#endif
 			xTaskNotify(TaskToNotify_afterTx, (uint32_t)result ,eSetValueWithOverwrite);
 
 		} else if (notif_val == MANCHESTER_RECEIVE_NOTIFY) {
@@ -137,11 +138,16 @@ void manchester_task_run(void)
 			xTaskNotify(TaskToNotify_afterRx, (uint32_t)result, eSetValueWithOverwrite);
 
 		} else {
+#if (MANCH_TASK_DEBUG_PRINT == 1)
 			xputs(task_name);
 			xprintf(" bad notif. value %d\n", notif_val);
+#endif
 		}
 	} else {
+#if (MANCH_TASK_DEBUG_PRINT == 1)
 		xputs(task_name);
 		xputs(" is idle\n");
+#endif
 	}
 }
+

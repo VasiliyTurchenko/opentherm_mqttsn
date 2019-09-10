@@ -22,7 +22,6 @@
 static const char *ip_string = "IP";
 static const char *topic_string = "topic";
 
-
 extern const Media_Desc_t Media0;
 
 /**

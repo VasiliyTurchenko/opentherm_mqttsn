@@ -5,9 +5,14 @@
 * Date: 03-Jan-2017
 */
 
+#include <stdbool.h>
+#include <limits.h>
+
 #include "FreeRTOS.h"
 #include "task.h"
 #include "cmsis_os.h"
+
+#include "mutex_helpers.h"
 
 #include "lan.h"
 #include "xprintf.h"
@@ -19,6 +24,11 @@
 
 // MAC address
 uint8_t mac_addr[6];
+
+/* ARP MUTEX */
+static osMutexId ARP_MutexHandle __attribute__((section (".ccmram")));
+static osStaticMutexDef_t ARP_Mutex_ControlBlock __attribute__((section (".ccmram")));
+
 
 // for statistic purpose
 
@@ -54,47 +64,88 @@ uint32_t ip_gateway;
 #define ip_broadcast (ip_addr | ~ip_mask)
 
 // Packet buffers
-uint8_t eth_buf[NUM_ETH_BUFFERS][ENC28J60_MAXFRAME]; /* ethernet buffers*/
+static uint8_t eth_buf[NUM_ETH_BUFFERS][ENC28J60_MAXFRAME]; /* ethernet buffers*/
 
-socket_t sockets[NUM_SOCKETS]; /*  sockets pool */
+static socket_t sockets[NUM_SOCKETS]; /*  sockets pool */
 /* each net_buf belongs to the one of the sockets */
 /* each eth_buf_state belongs to the one of the sockets*/
-enum EthBufState eth_buf_state[NUM_ETH_BUFFERS]; /* states of the ethernet buffers */
+static enum EthBufState eth_buf_state[NUM_ETH_BUFFERS]; /* states of the ethernet buffers */
 
-// ARP cache
-static uint8_t arp_cache_wr;
+/**
+ * @brief arpCacheWriteIndex index to write new ARP entry
+ */
+static uint8_t arpCacheWriteIndex;
+
+/**
+ * @brief arp_cache ARP cache array
+ */
 static arp_cache_entry_t arp_cache[ARP_CACHE_SIZE];
-void arp_filter(eth_frame_t *frame, uint16_t len);
 
-// Function prototypes
-void eth_send(eth_frame_t *frame, uint16_t len);
-void eth_reply(eth_frame_t *frame, uint16_t len);
-void eth_resend(eth_frame_t *frame, uint16_t len);
-eth_frame_t *eth_filter(eth_frame_t *frame, uint16_t len);
+/* */
+static void icmp_filter(eth_frame_t *frame, uint16_t len);
 
-uint8_t *arp_resolve(uint32_t node_ip_addr);
+/* ARP functions */
+static void arp_filter(eth_frame_t *frame, uint16_t len);
+static uint8_t *arp_resolve(uint32_t node_ip_addr);
+static uint8_t *arp_search_cache(uint32_t node_ip_addr);
+static void request_arp(uint32_t node_ip_addr);
+static int arp_get_cache_index(uint32_t node_ip_addr);
 
-uint8_t ip_send(eth_frame_t *frame, uint16_t len);
-void ip_reply(eth_frame_t *frame, uint16_t len);
-void ip_resend(eth_frame_t *frame, uint16_t len);
+/* Ethernet level */
+static void eth_send(eth_frame_t *frame, uint16_t len);
+static void eth_reply(eth_frame_t *frame, uint16_t len);
+static void eth_resend(eth_frame_t *frame, uint16_t len);
+static eth_frame_t *eth_filter(eth_frame_t *frame, uint16_t len);
 
-uint16_t ip_cksum(uint32_t sum, uint8_t *buf, uint16_t len);
+/* IP level */
+static uint8_t ip_send(eth_frame_t *frame, uint16_t len);
+static void ip_reply(eth_frame_t *frame, uint16_t len);
+static void ip_resend(eth_frame_t *frame, uint16_t len);
+static uint16_t ip_cksum(uint32_t sum, uint8_t *buf, uint16_t len);
+static eth_frame_t *ip_filter(eth_frame_t *frame, uint16_t len);
 
+#if (0)
 void dhcp_filter(eth_frame_t *frame, uint16_t len);
+#endif
 
-uint8_t tcp_listen(uint8_t id, eth_frame_t *frame);
-void tcp_read(uint8_t id, eth_frame_t *frame, uint8_t re);
-void tcp_write(uint8_t id, eth_frame_t *frame, uint16_t len);
-void tcp_closed(uint8_t id, uint8_t hard);
+/* TCP stubs */
+static uint8_t tcp_listen(uint8_t id, eth_frame_t *frame);
+static void tcp_read(uint8_t id, eth_frame_t *frame, uint8_t re);
+static void tcp_write(uint8_t id, eth_frame_t *frame, uint16_t len);
+static void tcp_closed(uint8_t id, uint8_t hard);
 
+/* memory dispatcher */
 static uint8_t *lan_getmem(void);
 static uint8_t *lan_freemem(uint8_t *buf);
-//
-uint8_t *mac_to_enc(void);
-//
-uint32_t rtime(void);
-eth_frame_t *udp_packet_callback(eth_frame_t *frame, uint16_t len);
-uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen, const uint8_t attempts);
+
+uint8_t *getMAC(void);
+
+/* not used right now */
+static uint32_t rtime(void);
+
+/* UDP level */
+static eth_frame_t *udp_packet_callback(eth_frame_t *frame, uint16_t len);
+static eth_frame_t *udp_filter(eth_frame_t *frame, uint16_t len);
+
+/* raw socket read */
+static uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen, const uint8_t attempts);
+
+/**
+ * @brief set_notif_params
+ * @param soc
+ * @param TaskToNotify
+ * @param readTimeOutMS
+ * @return
+ */
+socket_p set_notif_params(socket_p soc, void * TaskToNotify, uint32_t readTimeOutMS)
+{
+	socket_p retVal = soc;
+	if (soc != NULL) {
+		soc->TaskToNotify = TaskToNotify;
+		soc->readTimeOutMS = readTimeOutMS;
+	}
+	return retVal;
+}
 
 /**
   * assigns a socket from free pool
@@ -1084,7 +1135,7 @@ void udp_reply(eth_frame_t *frame, uint16_t len)
   * @return eth_frame_t* changed pointer to the frame or NULL in pointer isn't changed
   * @note  THREAD - SAFE
   */
-eth_frame_t *udp_filter(eth_frame_t *frame, uint16_t len)
+static eth_frame_t *udp_filter(eth_frame_t *frame, uint16_t len)
 {
 	eth_frame_t *retval;
 	retval = frame;
@@ -1122,7 +1173,7 @@ eth_frame_t *udp_filter(eth_frame_t *frame, uint16_t len)
   * @param len lenght oc ICMP packet
   * @return none
   */
-void icmp_filter(eth_frame_t *frame, uint16_t len)
+static void icmp_filter(eth_frame_t *frame, uint16_t len)
 {
 	ip_packet_t *packet = (void *)frame->data;
 	icmp_echo_packet_t *icmp = (void *)packet->data;
@@ -1142,8 +1193,14 @@ void icmp_filter(eth_frame_t *frame, uint16_t len)
  * IP
  */
 
-// calculate IP checksum
-uint16_t ip_cksum(uint32_t sum, uint8_t *buf, uint16_t len)
+/**
+ * @brief ip_cksum calculates IP checksum
+ * @param sum
+ * @param buf
+ * @param len
+ * @return
+ */
+static uint16_t ip_cksum(uint32_t sum, uint8_t *buf, uint16_t len)
 {
 	while (len >= 2U) {
 		sum += ((uint16_t)*buf << 8) | *(buf + 1);
@@ -1165,7 +1222,7 @@ uint16_t ip_cksum(uint32_t sum, uint8_t *buf, uint16_t len)
 //	- ip.dst
 //	- ip.proto
 // len is IP packet payload length
-uint8_t ip_send(eth_frame_t *frame, uint16_t len)
+static uint8_t ip_send(eth_frame_t *frame, uint16_t len)
 {
 	ip_packet_t *ip = (void *)(frame->data);
 	uint32_t route_ip;
@@ -1213,7 +1270,7 @@ uint8_t ip_send(eth_frame_t *frame, uint16_t len)
 
 // send IP packet back
 // len is IP packet payload length
-void ip_reply(eth_frame_t *frame, uint16_t len)
+static void ip_reply(eth_frame_t *frame, uint16_t len)
 {
 	ip_packet_t *packet = (void *)(frame->data);
 
@@ -1233,7 +1290,7 @@ void ip_reply(eth_frame_t *frame, uint16_t len)
 
 // can be called directly after
 //	ip_send/ip_reply with new data
-void ip_resend(eth_frame_t *frame, uint16_t len)
+static void ip_resend(eth_frame_t *frame, uint16_t len)
 {
 	ip_packet_t *ip = (void *)(frame->data);
 
@@ -1251,7 +1308,7 @@ void ip_resend(eth_frame_t *frame, uint16_t len)
   * @param len length of the ip part of the packet
   * @return eth_frame_t* changed pointer to the frame or NULL in pointer isn't changed
   */
-eth_frame_t *ip_filter(eth_frame_t *frame, uint16_t len)
+static eth_frame_t *ip_filter(eth_frame_t *frame, uint16_t len)
 {
 	uint16_t hcs;
 	ip_packet_t *packet = (void *)(frame->data);
@@ -1300,7 +1357,7 @@ eth_frame_t *ip_filter(eth_frame_t *frame, uint16_t len)
  * ARP
  */
 
-/** decrements time to live of the arp cache entry every 1ms
+/** decrements time to live of the arp cache entry every 1s
   * invalidates the outdated entry
   * @param none
   * @return none
@@ -1309,12 +1366,16 @@ eth_frame_t *ip_filter(eth_frame_t *frame, uint16_t len)
 void arp_age_entries(void)
 {
 	uint8_t i;
+//	taskENTER_CRITICAL();
+	TAKE_MUTEX(ARP_MutexHandle);
 	for (i = 0; i < ARP_CACHE_SIZE; i++) {
 		if (arp_cache[i].age > 0) {
 			arp_cache[i].age--;
 		} else {
-			; /* invalidate entry */
+			memset(&arp_cache[i], 0, sizeof (arp_cache_entry_t));
 		}
+//	taskEXIT_CRITICAL();
+	GIVE_MUTEX(ARP_MutexHandle);
 	}
 }
 
@@ -1323,18 +1384,34 @@ void arp_age_entries(void)
   * @return NULL if not found; pointer to the valid MAC if found
   * 									THREAD-SAFE
   */
-uint8_t *arp_search_cache(uint32_t node_ip_addr)
+static uint8_t *arp_search_cache(uint32_t node_ip_addr)
 {
-	uint8_t i;
-	uint8_t *result;
-	result = NULL;
-	taskENTER_CRITICAL();
-	for (i = 0; i < ARP_CACHE_SIZE; ++i) {
-		if (arp_cache[i].ip_addr == node_ip_addr)
-			result = arp_cache[i].mac_addr;
+	int i;
+	uint8_t *result = NULL;
+	i = arp_get_cache_index(node_ip_addr);
+	if ( i != -1 ) {
+		result = arp_cache[i].mac_addr;
 	}
-	taskEXIT_CRITICAL();
 	return result;
+}
+
+/**
+ * @brief arp_get_cache_index returns index of te entry in the cache or -1
+ * @param node_ip_addr
+ * @return
+ */
+static int arp_get_cache_index(uint32_t node_ip_addr)
+{
+	int rv = -1;
+	TAKE_MUTEX(ARP_MutexHandle);
+	for (int i = 0; i < ARP_CACHE_SIZE; ++i) {
+		if (arp_cache[i].ip_addr == node_ip_addr) {
+			rv = i;
+			break;
+		}
+	}
+	GIVE_MUTEX(ARP_MutexHandle);
+	return  rv;
 }
 
 /**
@@ -1343,7 +1420,7 @@ uint8_t *arp_search_cache(uint32_t node_ip_addr)
   * @return none
   * This is asynchronous function            THREAD - SAFE
   */
-void request_arp(uint32_t node_ip_addr)
+static void request_arp(uint32_t node_ip_addr)
 {
 	eth_frame_t *frame;
 	/*	uint8_t *mac; */
@@ -1367,7 +1444,7 @@ void request_arp(uint32_t node_ip_addr)
 			UNUSED(0);
 		} else {
 			arp_mallocs_frees--;
-		};
+		}
 	}
 	return;
 }
@@ -1378,7 +1455,7 @@ void request_arp(uint32_t node_ip_addr)
   * @return pointer to the MAC address or NULL if not resolver
   * function does not breals any other buffer				THREAD-SAFE
   */
-uint8_t *arp_resolve(uint32_t node_ip_addr)
+static uint8_t *arp_resolve(uint32_t node_ip_addr)
 {
 	uint8_t *mac;
 	mac = NULL;
@@ -1403,7 +1480,7 @@ fExit:
   * @param len length of the packet
   * @return none
   */							/*  THREAD-SAFE */
-void arp_filter(eth_frame_t *frame, uint16_t len)
+static void arp_filter(eth_frame_t *frame, uint16_t len)
 {
 	arp_message_t *msg = (void *)(frame->data);
 
@@ -1411,7 +1488,7 @@ void arp_filter(eth_frame_t *frame, uint16_t len)
 		if ((msg->hw_type == ARP_HW_TYPE_ETH) && (msg->proto_type == ARP_PROTO_TYPE_IP) &&
 		    (msg->ip_addr_to == ip_addr)) {
 			switch (msg->type) {
-			case ARP_TYPE_REQUEST:
+			case ARP_TYPE_REQUEST: {
 				msg->type = ARP_TYPE_RESPONSE;
 				memcpy(msg->mac_addr_to, msg->mac_addr_from, 6);
 				memcpy(msg->mac_addr_from, mac_addr, 6);
@@ -1419,18 +1496,27 @@ void arp_filter(eth_frame_t *frame, uint16_t len)
 				msg->ip_addr_from = ip_addr;
 				eth_reply(frame, sizeof(arp_message_t));
 				break;
-			case ARP_TYPE_RESPONSE:
-				if (!arp_search_cache(msg->ip_addr_from)) {
-					taskENTER_CRITICAL();
-					arp_cache[arp_cache_wr].ip_addr = msg->ip_addr_from;
-					memcpy(arp_cache[arp_cache_wr].mac_addr, msg->mac_addr_from,
-					       6);
-					arp_cache[arp_cache_wr].age = (int32_t)ARP_TIMEOUT_MS;
-					arp_cache_wr++;
-					if (arp_cache_wr == (uint8_t)ARP_CACHE_SIZE) {
-						arp_cache_wr = 0u;
+				}
+			case ARP_TYPE_RESPONSE: {
+//				if (arp_search_cache(msg->ip_addr_from) == NULL) {
+				int idx;
+				idx = arp_get_cache_index(msg->ip_addr_from);
+				arpCacheWriteIndex = (idx == -1) ? arpCacheWriteIndex : (uint8_t)idx;
+
+//					taskENTER_CRITICAL();
+					TAKE_MUTEX(ARP_MutexHandle);
+
+					arp_cache[arpCacheWriteIndex].ip_addr = msg->ip_addr_from;
+					memcpy(arp_cache[arpCacheWriteIndex].mac_addr,
+					       msg->mac_addr_from, 6);
+					arp_cache[arpCacheWriteIndex].age = (int32_t)ARP_TIMEOUT_S;
+
+					arpCacheWriteIndex++;
+					if (arpCacheWriteIndex == (uint8_t)ARP_CACHE_SIZE) {
+						arpCacheWriteIndex = 0u;
 					}
-					taskEXIT_CRITICAL();
+//					taskEXIT_CRITICAL();
+					GIVE_MUTEX(ARP_MutexHandle);
 				}
 				break;
 			}
@@ -1445,7 +1531,7 @@ void arp_filter(eth_frame_t *frame, uint16_t len)
 
 // send new Ethernet frame to same host
 //	(can be called directly after eth_send)
-void eth_resend(eth_frame_t *frame, uint16_t len)
+static void eth_resend(eth_frame_t *frame, uint16_t len)
 {
 	enc28j60_send_packet((void *)frame, len + sizeof(eth_frame_t));
 }
@@ -1454,14 +1540,14 @@ void eth_resend(eth_frame_t *frame, uint16_t len)
 // fields must be set:
 //	- frame.dst
 //	- frame.type
-void eth_send(eth_frame_t *frame, uint16_t len)
+static void eth_send(eth_frame_t *frame, uint16_t len)
 {
 	memcpy(frame->from_addr, mac_addr, 6);
 	enc28j60_send_packet((void *)frame, (uint16_t)(len + (uint16_t)sizeof(eth_frame_t)));
 }
 
 // send Ethernet frame back
-void eth_reply(eth_frame_t *frame, uint16_t len)
+static void eth_reply(eth_frame_t *frame, uint16_t len)
 {
 	memcpy(frame->to_addr, frame->from_addr, 6);
 	memcpy(frame->from_addr, mac_addr, 6);
@@ -1474,7 +1560,7 @@ void eth_reply(eth_frame_t *frame, uint16_t len)
   * @param len length of the packet
   * @return eth_frame_t* changed pointer to the frame or NULL in pointer isn't changed
   */
-eth_frame_t *eth_filter(eth_frame_t *frame, uint16_t len)
+static eth_frame_t *eth_filter(eth_frame_t *frame, uint16_t len)
 {
 	eth_frame_t *retval;
 	retval = frame;
@@ -1503,20 +1589,20 @@ eth_frame_t *eth_filter(eth_frame_t *frame, uint16_t len)
 /*
  * LAN
  */
-uint8_t *mac_to_enc(void)
+uint8_t *getMAC(void)
 {
 	return mac_addr;
 }
 
 void lan_init() /* NOT THREAD-SAFE */
 {
-//	Get_MAC(mac_addr);
-//	ip_pair_t tmp;
-//	Get_IP_Params(&tmp, MY_IP);
-//	ip_addr = tmp.ip;
-//	Get_IP_Params(&tmp, DEFAULT_GW);
-//	Get_IP_Params(&tmp, MY_NETMASK);
-//	ip_mask = tmp.ip;
+	//	Get_MAC(mac_addr);
+	//	ip_pair_t tmp;
+	//	Get_IP_Params(&tmp, MY_IP);
+	//	ip_addr = tmp.ip;
+	//	Get_IP_Params(&tmp, DEFAULT_GW);
+	//	Get_IP_Params(&tmp, MY_NETMASK);
+	//	ip_mask = tmp.ip;
 
 	uint8_t i;
 	for (i = 0u; i < NUM_ETH_BUFFERS; i++) {
@@ -1527,6 +1613,10 @@ void lan_init() /* NOT THREAD-SAFE */
 		/*		sockets[i].buf = (uint8_t*)&(eth_buf[i]);	*/ /* link the buffer with the socket */
 		sockets[i].buf = NULL;
 	}
+
+	osMutexStaticDef(CRC_Mutex, &ARP_Mutex_ControlBlock);
+	ARP_MutexHandle = osMutexCreate(osMutex(CRC_Mutex));
+
 	enc28j60_init(mac_addr);
 	wr_soc_err = 0U;
 
@@ -1612,12 +1702,10 @@ uint32_t htonl(uint32_t a)
   * @param  attempts number of attempts by 5ms
   * @return number of received bytes if OK; NULL if not ok, last_error field contains additional info
   */
-uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen, const uint8_t attempts)
+static uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen, const uint8_t attempts)
 {
-	uint16_t result;
-	result = 0x00U;
-	uint8_t maxattempts;
-	maxattempts = attempts;
+	uint16_t result = 0x00U;
+	uint8_t maxattempts = attempts;
 
 	if (soc == NULL) {
 		goto fExit;
@@ -1627,12 +1715,34 @@ uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen, const uint8_t att
 		goto fExit;
 	} else {
 		/* wait for the data */
+#if (LAN_NOTIFICATION != 1)
 		while ((soc->mode & SOC_NEW_DATA) != SOC_NEW_DATA) {
+			/** @TODO add wait for semaphore here 		*/
 			if ((maxattempts--) == 0U) {
 				goto fExit;
 			}
 			osDelay(5U); /* 5 ms */
 		}
+#else
+		uint32_t timeout = pdMS_TO_TICKS(soc->readTimeOutMS);
+		uint32_t notif_val;
+		if (soc->TaskToNotify != NULL) {
+			if (xTaskNotifyWait(ULONG_MAX,
+					    ULONG_MAX,
+					    &notif_val,
+					    timeout) != pdTRUE) {
+						goto fExit;
+					    }
+		} else {
+			while ((soc->mode & SOC_NEW_DATA) != SOC_NEW_DATA) {
+				/** @TODO add wait for semaphore here 		*/
+				if ((maxattempts--) == 0U) {
+					goto fExit;
+				}
+				osDelay(5U); /* 5 ms */
+			}
+		}
+#endif
 		/* data arrived here */
 		uintptr_t payload;
 		uintptr_t start_pos;
@@ -1766,7 +1876,7 @@ fExit:
 		wr_soc_err++;
 		if (wr_soc_err > 3) {
 			while (1) {
-				;
+				/**/
 			}
 		}
 	}
@@ -1780,10 +1890,13 @@ fExit:
   * @param len - length of the udp payload of the frame
   * @return eth_frame_t* changed pointer to the frame or NULL in pointer isn't changed
   */
-eth_frame_t *udp_packet_callback(eth_frame_t *frame, uint16_t len)
+static eth_frame_t *udp_packet_callback(eth_frame_t *frame, uint16_t len)
 {
 	eth_frame_t *retval;
 	retval = frame;
+
+	/* add 06-Sep-2019 */
+	bool needNotify = false;
 
 	if (frame == NULL) {
 		return frame; /* function is safe against null pointers (11-Mar-2018) */
@@ -1799,9 +1912,11 @@ eth_frame_t *udp_packet_callback(eth_frame_t *frame, uint16_t len)
 		    ((sockets[i].mode & SOC_MODE_READ) != 0U) && /* + 15-Mar-2018  */
 		    (sockets[i].proto == (uint8_t)IP_PROTOCOL_UDP) &&
 		    (sockets[i].loc_port == ntohs(udp->to_port))) {
+
 			/* receive from ANY port added 11-03-2018 */
 			sockets[i].rem_port = (sockets[i].rem_port == 0U) ? ntohs(udp->from_port) :
 									    sockets[i].rem_port;
+
 			if (sockets[i].rem_port == ntohs(udp->from_port)) {
 				/* proceed with payload  */
 				sockets[i].len = len;
@@ -1817,11 +1932,19 @@ eth_frame_t *udp_packet_callback(eth_frame_t *frame, uint16_t len)
 				sockets[i].buf = (uint8_t *)frame;
 				readsoc_mallocs++;
 				udp_fits_callbacks++;
+				needNotify = true;
 				break; /* only first fit socket has new data */
 			}
 		} /* end of the "5 conditions" if */
 	}	 /* end of for i loop */
 	taskEXIT_CRITICAL();
+/* notify task here */
+/* notification added 06-Sep-2019 */
+	if ((needNotify) && (sockets[i].TaskToNotify != NULL)) {
+		xTaskNotify(sockets[i].TaskToNotify,	 /* the task which is waiting for the data */
+				(uint32_t)(&sockets[i]), /* pointer for fast socket access */
+				eSetValueWithOverwrite);
+	}
 	udp_callbacks++;
 	return retval;
 }
@@ -1846,27 +1969,27 @@ void nb_stat(void)
 /**/
 
 // TCP callbacks
-uint8_t tcp_listen(uint8_t id, eth_frame_t *frame)
+static uint8_t tcp_listen(uint8_t id, eth_frame_t *frame)
 {
 	UNUSED(frame);
 	return id;
 }
 
-void tcp_read(uint8_t id, eth_frame_t *frame, uint8_t re)
+static void tcp_read(uint8_t id, eth_frame_t *frame, uint8_t re)
 {
 	UNUSED(frame);
 	UNUSED(re);
 	UNUSED(id);
 }
 
-void tcp_write(uint8_t id, eth_frame_t *frame, uint16_t len)
+static void tcp_write(uint8_t id, eth_frame_t *frame, uint16_t len)
 {
 	UNUSED(frame);
 	UNUSED(len);
 	UNUSED(id);
 }
 
-void tcp_closed(uint8_t id, uint8_t hard)
+static void tcp_closed(uint8_t id, uint8_t hard)
 {
 	UNUSED(id);
 	UNUSED(hard);

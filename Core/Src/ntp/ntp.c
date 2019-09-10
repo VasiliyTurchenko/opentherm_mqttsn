@@ -9,6 +9,9 @@
 
 #include <time.h>
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #include "lan.h"
 
 #include "xprintf.h"
@@ -24,6 +27,8 @@ ErrorStatus NTP_sync(ip_pair_t serv)
 	ntp_packet NTP_packet;
 	ErrorStatus result;
 	result = ERROR;
+
+	TaskHandle_t	taskHandle = xTaskGetCurrentTaskHandle();
 
 	memset(&NTP_packet, 0, sizeof(ntp_packet));
 	/* Set the first byte's bits to 00,011,011 for li = 0, vn = 3, and mode = 3. The rest will be left set to zero. */
@@ -44,6 +49,11 @@ ErrorStatus NTP_sync(ip_pair_t serv)
 	}
 
 	if (change_soc_mode(ntpsoc, SOC_MODE_READ) == NULL) {
+		goto fExit; /* error with socket */
+	}
+
+
+	if (set_notif_params(ntpsoc, taskHandle, 500U) == NULL) {
 		goto fExit; /* error with socket */
 	}
 

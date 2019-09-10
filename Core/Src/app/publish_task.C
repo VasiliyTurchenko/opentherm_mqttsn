@@ -89,7 +89,7 @@ void publish_task_run(void)
 		osDelay(pdMS_TO_TICKS(200U));
 	}
 
-	/* initialize pub context */
+/* 1.	initialize pub context */
 	static uint32_t conn_attempts = 0U;
 	while (mqtt_sn_init_context(&mqttsncontext01, &MQTT_pub_working_set,
 				    &MQP_IP_cfg) != SUCCESS) {
@@ -101,7 +101,7 @@ void publish_task_run(void)
 		/* watchdog reboots in case of many unsuccessful inits*/
 	}
 
-	/* context initialized */
+/* 2.	context initialized, connect  */
 	while (mqttsncontext01.state != CONNECTED) {
 		conn_attempts++; /* increment attempts counter */
 #ifdef MQTT_SN_PUB_DEBUG_PRINT
@@ -115,7 +115,7 @@ void publish_task_run(void)
 		HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
 	}
 
-	/* Now we have to register topics */
+/* 3.	Now we have to register topics */
 	ErrorStatus regresult = ERROR;
 	mqttsncontext01.currPubSubMV = 0U; /* RESET list */
 	do {
@@ -141,7 +141,7 @@ void publish_task_run(void)
 	} while (1);
 
 	/* here all the topics are registered */
-	/* start periodic part of the task */
+/* 4.	start the periodic part of the task */
 	TickType_t xLastWakeTime;
 	TickType_t xPeriod = pdMS_TO_TICKS(200U);
 	xLastWakeTime = xTaskGetTickCount(); // get value only once!
@@ -158,6 +158,7 @@ void publish_task_run(void)
 					i); /* mutex lock !*/
 
 				if (pMV == NULL) {
+					/* this MV is not suitable for publishing */
 					continue;
 				}
 
@@ -183,7 +184,7 @@ void publish_task_run(void)
 			}
 		}
 	}
-	/* release sockets */
+/* 5.	release sockets */
 	ErrorStatus deinitresult;
 	deinitresult = mqtt_sn_deinit_context(&mqttsncontext01);
 	if (deinitresult == ERROR) {
@@ -192,8 +193,8 @@ void publish_task_run(void)
 #endif
 		/* need reboot */
 		for (;;) {
-			;
-		} /* LOCK */
+			/* LOCK */
+		}
 	}
 }
 

@@ -72,6 +72,11 @@ static uint32_t comm_func(uint32_t val)
 {
 	static uint32_t notif_val = 0U;
 	uint32_t retVal = val;
+	static const char * got_notif_tx = "opentherm_task comm: got notification tx ";
+	static const char * got_notif_rx = "opentherm_task comm: notif. rx";
+	static const char * ok_ = "OK.\n";
+	static const char * err_ = "ERR.\n";
+
 
 	*(uint32_t *)(&Tx_buf[0]) = val;
 
@@ -80,11 +85,12 @@ static uint32_t comm_func(uint32_t val)
 
 	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
 			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
-		xputs("opentherm_task comm: got notification tx ");
 		if (notif_val == (ErrorStatus)ERROR) {
-			xputs("ERR\n");
+			xputs(got_notif_tx);
+			xputs(err_);
 		} else {
-			xputs("OK\n");
+			xputs(got_notif_tx);
+			xputs(ok_);
 		}
 	}
 
@@ -97,13 +103,14 @@ static uint32_t comm_func(uint32_t val)
 
 	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
 			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
-		xputs("opentherm_task comm: notif. rx");
 		if (notif_val == (ErrorStatus)ERROR) {
-			xputs(" ERR\n");
+			xputs(got_notif_rx);
+			xputs(err_);
 			retVal = 0U;
 
 		} else {
-			xputs(" OK. ");
+			xputs(got_notif_rx);
+			xputs(ok_);
 			retVal = *(uint32_t *)(&Rx_buf[0]);
 			xprintf("Received: %d\n", retVal);
 		}
@@ -181,7 +188,7 @@ static const size_t rec_len = sizeof(template_str);
 static const char sp_[] = "SP__\n";
 static const char gi_[] = "__GI\n";
 static const char spgi_[] = "SPGI\n";
-static const char no_[] = "NO__";
+static const char no_[] = "NO__\n";
 
 /**
  * @brief configMVs configures ReportType field of every MV
@@ -212,8 +219,11 @@ static ErrorStatus configMVs(void)
 				rep_type = GI;
 			} else if ((strcmp(spgi_, &read_rec[6]) == 0)) {
 				rep_type = SP_GI;
-			} else {
+			} else if ((strcmp(no_, &read_rec[6]) == 0)) {
 				rep_type = Inact;
+			} else {
+				/* error */
+				break;
 			}
 
 			ldid_t ldid;
@@ -223,6 +233,9 @@ static ErrorStatus configMVs(void)
 			tMV * targetMV = OPENTHERM_findMVbyLDID(ldid);
 			if (targetMV != NULL) {
 				targetMV->ReportType = rep_type;
+			} else {
+				/* error */
+				break;
 			}
 			pos = pos + rec_len;
 			configured++;

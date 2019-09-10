@@ -48,14 +48,14 @@ typedef enum
 
 enum MQTTSN_msgTypes
 {
-	MQTTSN_ADVERTISE, MQTTSN_SEARCHGW, MQTTSN_GWINFO, MQTTSN_RESERVED1, 
+	MQTTSN_ADVERTISE, MQTTSN_SEARCHGW, MQTTSN_GWINFO, MQTTSN_RESERVED1,
 	MQTTSN_CONNECT, MQTTSN_CONNACK,
-	MQTTSN_WILLTOPICREQ, MQTTSN_WILLTOPIC, MQTTSN_WILLMSGREQ, MQTTSN_WILLMSG, 
+	MQTTSN_WILLTOPICREQ, MQTTSN_WILLTOPIC, MQTTSN_WILLMSGREQ, MQTTSN_WILLMSG,
 	MQTTSN_REGISTER, MQTTSN_REGACK,
 	MQTTSN_PUBLISH, MQTTSN_PUBACK, MQTTSN_PUBCOMP, MQTTSN_PUBREC, MQTTSN_PUBREL, MQTTSN_RESERVED2,
-	MQTTSN_SUBSCRIBE, MQTTSN_SUBACK, MQTTSN_UNSUBSCRIBE, MQTTSN_UNSUBACK, 
+	MQTTSN_SUBSCRIBE, MQTTSN_SUBACK, MQTTSN_UNSUBSCRIBE, MQTTSN_UNSUBACK,
 	MQTTSN_PINGREQ, MQTTSN_PINGRESP,
-	MQTTSN_DISCONNECT, MQTTSN_RESERVED3, 
+	MQTTSN_DISCONNECT, MQTTSN_RESERVED3,
 	MQTTSN_WILLTOPICUPD, MQTTSN_WILLTOPICRESP, MQTTSN_WILLMSGUPD, MQTTSN_WILLMSGRESP,
 };
 
@@ -141,8 +141,6 @@ void writeInt(unsigned char** pptr, int anInt);
 int readMQTTSNString(MQTTSNString* mqttstring, unsigned char** pptr, unsigned char* enddata);
 void writeCString(unsigned char** pptr, char* string);
 void writeMQTTSNString(unsigned char** pptr, MQTTSNString mqttstring);
-
-/* int MQTTSNPacket_read(unsigned char* buf, int buflen, int (*getfn)(socket_p, unsigned char*, int));*/
 int MQTTSNPacket_read(socket_p soc, unsigned char* buf, int buflen, uint16_t (*getfn)(socket_p, unsigned char*, int));
 
 #ifdef __cplusplus /* If this is a C++ compiler, use C linkage */

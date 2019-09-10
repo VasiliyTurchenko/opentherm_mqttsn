@@ -59,7 +59,7 @@ static uint8_t enc28j60_current_bank = 0;
 static uint16_t enc28j60_rxrdpt = 0;		// stored value of the read ptr
 
 //
-extern uint8_t * mac_to_enc(void);
+extern uint8_t * getMAC(void);
 //
 
 volatile	uint32_t	bad_eth_frames_cnt = 0;
@@ -346,7 +346,7 @@ void enc28j60_send_packet(uint8_t *data, uint16_t len)
 		s = enc28j60_rcr(ESTAT);
 		if ((s & (uint8_t)ESTAT_CLKRDY) == 0u) {
 /*hardware error !*/
-		enc28j60_init(mac_to_enc());
+		enc28j60_init(getMAC());
 		enc_hw_err_cnt++;
 			enc28j60_bfs((uint8_t)ECON1, (uint8_t)ECON1_TXRST);
 			enc28j60_bfc((uint8_t)ECON1, (uint8_t)ECON1_TXRST);

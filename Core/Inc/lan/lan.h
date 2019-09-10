@@ -44,10 +44,10 @@
 //#define	NUM_SOCKETS		NUM_ETH_BUFFERS
 #define	NUM_SOCKETS		10U
 
-#define ARP_TIMEOUT		20U	/*milliseconds */
+#define ARP_TIMEOUT		200U	/*milliseconds */
 #define NUM_ARP_RETRIES		50U
 
-#define	ARP_TIMEOUT_MS		((uint32_t)(2*60*60*1000))	/* 2 hours */
+#define	ARP_TIMEOUT_S		((uint32_t)(2*60*60))	/* 2 hours */
 
 
 #define	START_EUPH_PORT		50000U
@@ -206,6 +206,8 @@ typedef  struct /*__attribute__((packed))*/ socket {
 			uint8_t			proto;			/*!< protocol */
 			uint8_t			mode;			/*!< read or write ?*/
 			DataLost_t		datalost;		/*!< the previous new data is overwritten */
+			void *			TaskToNotify;		/*!< task handle to be notified */
+			uint32_t		readTimeOutMS;		/*!< socket read operation timeout */
 	} socket_t;
 
 typedef	socket_t	*socket_p;				/*!< pointer to the socket */
@@ -491,6 +493,8 @@ uint16_t read_socket_nowait(socket_p soc, uint8_t* buf, int32_t buflen);
   * @retval soc pointer in OK, NULL if ERROR
   */
 socket_p change_soc_mode(socket_p soc, const uint8_t mode);
+
+socket_p set_notif_params(socket_p soc, void * TaskToNotify, uint32_t readTimeOutMS);
 
 #endif
 /* ############################################################################################# */

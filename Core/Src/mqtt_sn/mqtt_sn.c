@@ -3,6 +3,7 @@
  *
  * date: 10-Jan-2018
  * date: 29-Jun-2019
+ * date: 07-Sep-2019
  *  MQTT-SN simple procedures - publishing / subscribing
  *
  *******************************************************************************/
@@ -127,9 +128,12 @@ ErrorStatus mqtt_sn_connect(MQTT_SN_Context_p pcontext)
 		goto fExit;
 	}
 
-	const TickType_t timeout = pdMS_TO_TICKS(500U);
-	TickType_t entree_time = xTaskGetTickCount();
 	int MQTTSNPacket_read_result = MQTTSNPACKET_READ_ERROR;
+	const uint32_t connectTimeoutMS = 500U;
+
+#if (LAN_NOTIFICATION != 1)
+	const TickType_t timeout = pdMS_TO_TICKS(connectTimeoutMS);
+	TickType_t entree_time = xTaskGetTickCount();
 
 	do {
 		MQTTSNPacket_read_result = MQTTSNPacket_read(
@@ -139,6 +143,16 @@ ErrorStatus mqtt_sn_connect(MQTT_SN_Context_p pcontext)
 		}
 		taskYIELD();
 	} while (xTaskGetTickCount() < (entree_time + timeout));
+#else
+	set_notif_params(pcontext->insoc,
+			xTaskGetCurrentTaskHandle(), /* current task handle */
+			connectTimeoutMS);
+	MQTTSNPacket_read_result = MQTTSNPacket_read(
+			pcontext->insoc,
+			buf,
+			buflen,
+			&read_socket_nowait);	/* use notif. */
+#endif
 
 	if (MQTTSNPacket_read_result == MQTTSN_CONNACK) {
 		int connack_rc = -1;
@@ -222,10 +236,12 @@ ErrorStatus mqtt_sn_register_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 		goto fExit;
 	}
 
-	const TickType_t timeout = pdMS_TO_TICKS(500U);
-	TickType_t entree_time = xTaskGetTickCount();
 	int MQTTSNPacket_read_result = MQTTSNPACKET_READ_ERROR;
+	const uint32_t registerTimeoutMS = 500U;
 
+#if (LAN_NOTIFICATION != 1)
+	const TickType_t timeout = pdMS_TO_TICKS(registerTimeoutMS);
+	TickType_t entree_time = xTaskGetTickCount();
 	do {
 		MQTTSNPacket_read_result = MQTTSNPacket_read(
 			pcontext->insoc, buf, buflen, &read_socket_nowait);
@@ -234,6 +250,17 @@ ErrorStatus mqtt_sn_register_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 		}
 		taskYIELD();
 	} while (xTaskGetTickCount() < (entree_time + timeout));
+#else
+	set_notif_params(pcontext->insoc,
+			xTaskGetCurrentTaskHandle(), /* current task handle */
+			registerTimeoutMS);
+
+	MQTTSNPacket_read_result = MQTTSNPacket_read(
+						pcontext->insoc,
+						buf,
+						buflen,
+						&read_socket_nowait); /* */
+#endif
 
 	if (MQTTSNPacket_read_result == MQTTSN_REGACK) {
 		uint16_t submsgid;
@@ -304,9 +331,13 @@ ErrorStatus mqtt_sn_publish_topic(MQTT_SN_Context_p pcontext, uint16_t topicid,
 
 	retVal = write_socket(pcontext->outsoc, buf, len);
 
-	TickType_t timeout = pdMS_TO_TICKS(500U);
-	TickType_t entree_time = xTaskGetTickCount();
 	rc = MQTTSNPACKET_READ_ERROR;
+	const uint32_t pubAckTimeOutMS = 500U;
+
+#if (LAN_NOTIFICATION != 1)
+	TickType_t timeout = pdMS_TO_TICKS(pubAckTimeOutMS);
+	TickType_t entree_time = xTaskGetTickCount();
+
 	do {
 		rc = MQTTSNPacket_read(pcontext->insoc, buf, buflen,
 				       &read_socket_nowait);
@@ -315,6 +346,16 @@ ErrorStatus mqtt_sn_publish_topic(MQTT_SN_Context_p pcontext, uint16_t topicid,
 		}
 		taskYIELD();
 	} while (xTaskGetTickCount() < (entree_time + timeout));
+#else
+	set_notif_params(pcontext->insoc,
+			xTaskGetCurrentTaskHandle(), /* current task handle */
+			pubAckTimeOutMS);
+
+	rc = MQTTSNPacket_read(pcontext->insoc,
+				 buf,
+				 buflen,
+				 &read_socket_nowait); /* */
+#endif
 
 	if (rc == MQTTSN_PUBACK) {
 		retVal = SUCCESS;
@@ -334,11 +375,11 @@ ErrorStatus mqtt_sn_publish_topic(MQTT_SN_Context_p pcontext, uint16_t topicid,
 		    returncode != MQTTSN_RC_ACCEPTED) {
 			xprintf("unable to publish, retcode %d\n", returncode);
 		} else {
-			/*			xprintf("puback received, id %d\n", packet_id)*/
-			;
+		/* xprintf("puback received, id %d\n", packet_id) */
+
 		}
 #endif
-		;
+		/**/
 	}
 fExit:
 	return retVal;
@@ -416,10 +457,13 @@ ErrorStatus mqtt_sn_subscribe_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 	if (retVal == ERROR) {
 		goto fExit;
 	}
-	/*	osDelay(500U); */
-	TickType_t timeout = pdMS_TO_TICKS(500U);
-	TickType_t entree_time = xTaskGetTickCount();
+
+	const uint32_t pubAckTimeoutMS = 500U;
 	int MQTTSNPacket_read_result = MQTTSNPACKET_READ_ERROR;
+
+#if (LAN_NOTIFICATION != 1)
+	TickType_t timeout = pdMS_TO_TICKS(pubAckTimeoutMS);
+	TickType_t entree_time = xTaskGetTickCount();
 	do {
 		MQTTSNPacket_read_result = MQTTSNPacket_read(
 			pcontext->insoc, buf, buflen, &read_socket_nowait);
@@ -428,8 +472,17 @@ ErrorStatus mqtt_sn_subscribe_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 		}
 		taskYIELD();
 	} while (xTaskGetTickCount() < (entree_time  + timeout));
+#else
+	set_notif_params(pcontext->insoc,
+			xTaskGetCurrentTaskHandle(), /* current task handle */
+			pubAckTimeoutMS);
+	MQTTSNPacket_read_result = MQTTSNPacket_read(
+						pcontext->insoc,
+						buf,
+						buflen,
+						&read_socket_nowait); /* */
+#endif
 
-	/*	if (MQTTSNPacket_read(pcontext->insoc, buf, buflen, &read_socket) == MQTTSN_SUBACK) */ /* wait for suback */
 	if (MQTTSNPacket_read_result == MQTTSN_SUBACK) {
 		unsigned short submsgid;
 		int granted_qos;
@@ -448,12 +501,12 @@ ErrorStatus mqtt_sn_subscribe_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 			xprintf("granted qos != 2, %d retcode %d\n",
 				granted_qos, returncode);
 #endif
-			; /*  comment  */
+			/*  comment  */
 		} else {
 #if defined(MQTT_SN_SUB_DEBUG_PRINT)
 			xprintf("SUBACK topic id %d\n", topicid);
 #endif
-			; /*  comment  */
+			/*  comment  */
 		}
 	} else {
 		retVal = ERROR;
@@ -524,11 +577,15 @@ ErrorStatus mqtt_sn_poll_subscribed(MQTT_SN_Context_p pcontext)
 #endif
 			/* dispatch topic */
 			/* check if the packet_id is from the past */
-			if ((packet_id > pcontext->last_procd_packet_id) ||
-			    ((packet_id < 0x8000U) &&
-			     (pcontext->last_procd_packet_id >
-			      0x8000U))) { /* normally sequenced packet id */
+			if ( (packet_id > pcontext->last_procd_packet_id) ||
+			     ((packet_id < 0x8000U) &&
+			     (pcontext->last_procd_packet_id > 0x8000U)) ) {
+			      /* normally sequenced packet id */
+/*
 
+{"CMD":"00004", {"Val":"off"}"
+
+*/
 				//				DAQ_Dispatch(payload, pubtopic, packet_id);
 
 				pcontext->last_procd_packet_id = packet_id;
@@ -551,7 +608,7 @@ ErrorStatus mqtt_sn_poll_subscribed(MQTT_SN_Context_p pcontext)
 #if defined(MQTT_SN_SUB_DEBUG_PRINT)
 					xputs("PUBACK sent\n");
 #endif
-					;
+					/**/
 				}
 			}
 		} /* of all ok, received correct data */

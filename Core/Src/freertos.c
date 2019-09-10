@@ -547,7 +547,6 @@ void __attribute__ ((noreturn)) Start_SubscribeTask(void const *argument)
 	/* Infinite loop */
 	for (;;) {
 		subscribe_task_run();
-		osDelay(1);
 	}
 	/* USER CODE END Start_SubscribeTask */
 }

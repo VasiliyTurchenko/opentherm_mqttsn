@@ -17,15 +17,15 @@
 typedef
 struct
 __attribute__((packed))
-        _tTime {			/*!< time holding structure */
-	        uint32_t	Seconds;	/*!< NTP seconds */
+	_tTime {			/*!< time holding structure */
+		uint32_t	Seconds;	/*!< NTP seconds */
 		uint16_t	mSeconds;	/*!< milliseconds */
-        } tTime;
+	} tTime;
 
-typedef 	tTime	*	ptr_Time;
+typedef 	tTime	*	tTime_p;
 
-ErrorStatus SaveTimeToRTC(ptr_Time time_now);
-ErrorStatus GetTimeFromRTC(ptr_Time time_now);
+ErrorStatus SaveTimeToRTC(tTime_p time_now);
+ErrorStatus GetTimeFromRTC(tTime_p time_now);
 
 #ifdef __cplusplus
  }

@@ -29,6 +29,7 @@
 #include "lan.h"
 
 #include "startup.h"
+#include "buildinfo.h"
 
 #ifndef MAKE_IP
 #define MAKE_IP(a, b, c, d)                                                    \
@@ -112,12 +113,23 @@ ErrorStatus AppStartUp(void)
 	ErrorStatus retVal;
 	retVal = ERROR;
 
+#if defined(MASTERBOARD)
+	static const char *id = "MASTER ";
+#endif
+
+#if defined(SLAVEBOARD)
+	static const char *id = "SLAVE ";
+#endif
+
 	InitComm();
 	xfunc_out = myxfunc_out_no_RTOS; /* diagnostic print */
 	/* set up periodic UART transmissions */
 	Transmit_non_RTOS = true;
 
 	xputs("\n\nStarting up...\n");
+	xputs(id);
+	xputs(buildNum);
+	xputs(buildDateTime);
 
 	Cold_Boot(); /* Cold_Boot always goes first */
 
@@ -236,7 +248,7 @@ static FRESULT SaveIPCfg(const Media_Desc_t *media)
 	size_t bw;
 
 	retVal = DeleteFile((Media_Desc_t *)media, IP_Cfg_File);
-	if ( (retVal == FR_OK) || (retVal == FR_NO_FILE) ) {
+	if ((retVal == FR_OK) || (retVal == FR_NO_FILE)) {
 		retVal = WriteBytes((Media_Desc_t *)media, IP_Cfg_File, 0U,
 				    datalen, &bw,
 				    (uint8_t *)&IP_Cfg_File_Default);
