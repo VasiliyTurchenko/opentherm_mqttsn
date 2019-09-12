@@ -7,15 +7,19 @@
  */
 
 #include "json.h"
+#include "ascii_helpers.h"
 
 #include "debug_settings.h"
 #include "xprintf.h"
 
+static const uint8_t pattern_false[] = { "false" };
+static const uint8_t pattern_true[] = { "true" };
+static const uint8_t pattern_null[] = { "null" };
+
 /* private funcrions */
-static void skip_spaces(const uint8_t **ptr);
+static inline void skip_spaces(const uint8_t **ptr);
 static uint32_t pair_out(uint8_t **adst, size_t *aremain, const pjson_obj asrc);
 static enum jenum_t decode_enum(const uint8_t **ptr);
-static uint32_t is_hex(const uint8_t *ptr);
 static ptrdiff_t check_esc(ptrdiff_t ii, const uint8_t **ptr, ptrdiff_t len);
 static size_t get_jstrlen(const uint8_t *ptr);
 
@@ -24,21 +28,15 @@ static size_t get_jstrlen(const uint8_t *ptr);
  * @param ptr address of the pointer to the current buffer position
  * @return *ptr points to the next non-space value
  */
-static void skip_spaces(const uint8_t **ptr)
-{
-	const uint8_t *saveptr;
-	saveptr = *ptr;
+/* ECMA-404 defines these symbols as whitespaces */
+#define IS_ECMA_WHITESPACE(A)                                                  \
+	(((A) == 0x08U) || ((A) == 0x09U) || ((A) == 0x0AU) || ((A) == 0x0DU))
 
-	/* ECMA-404 defines these symbols as whitespaces */
-	while ((**ptr == 0x08U) || (**ptr == 0x09U) || (**ptr == 0x0aU) ||
-	       (**ptr == 0x0dU)) {
-		if (**ptr == 0x00U) {
-			*ptr = saveptr; /* restore initial ptr */
-			break;
-		}
+static inline void skip_spaces(const uint8_t **ptr)
+{
+	while (IS_ECMA_WHITESPACE(**ptr)) {
 		(*ptr)++;
 	}
-	return;
 }
 
 /**
@@ -48,50 +46,37 @@ static void skip_spaces(const uint8_t **ptr)
  */
 static enum jenum_t decode_enum(const uint8_t **ptr)
 {
-	enum jenum_t decoded;
-	decoded = jpad;
-	static const uint8_t pattern_false[] = { "false" };
-	static const uint8_t pattern_true[] = { "true" };
-	static const uint8_t pattern_null[] = { "null" };
-	const uint8_t *pattern;
+	enum jenum_t decoded = jpad;
+	const uint8_t *pattern = NULL;
 	switch (**ptr) {
-	case 0x66U: /* f */
+	case 0x66U: /* f */ {
 		pattern = pattern_false;
+		decoded = jFALSE;
+		break;
+	}
+	case 0x74U: /* t */ {
+		pattern = pattern_true;
+		decoded = jTRUE;
+		break;
+	}
+	case 0x6eU: /* n */ {
+		pattern = pattern_null;
+		decoded = jNULL;
+		break;
+	}
+	default: {
+		break;
+	}
+	}
+	if (decoded != jpad) {
 		while (*pattern != 0x00U) {
 			if ((**ptr == 0x00U) || (**ptr != *pattern)) {
+				decoded = jpad;
 				goto fExit; /* error, token != false */
 			}
 			(*ptr)++;
 			pattern++;
 		}
-		decoded = jFALSE;
-		break;
-
-	case 0x74U: /* t */
-		pattern = pattern_true;
-		while (*pattern != 0x00U) {
-			if ((**ptr == 0x00U) || (**ptr != *pattern)) {
-				goto fExit; /* error, token != true */
-			}
-			(*ptr)++;
-			pattern++;
-		}
-		decoded = jTRUE;
-		break;
-	case 0x6eU: /* n */
-		pattern = pattern_null;
-		while (*pattern != 0x00U) {
-			if ((**ptr == 0x00U) || (**ptr != *pattern)) {
-				goto fExit; /* error, token != null */
-			}
-			(*ptr)++;
-			pattern++;
-		}
-		decoded = jNULL;
-		break;
-	default:
-		/* */
-		break;
 	}
 fExit:
 	return decoded;
@@ -100,7 +85,7 @@ fExit:
 
 /** pair_out creates a pair "name":"value"
   * @param adst pointer to the place in the outbuffer
-  * @param aremain remaining free bytes in the outbiuffer
+  * @param aremain remaining free bytes in the outbuffer
   * @param asrc source json object
   * @return 0 if no error or error code
   *
@@ -113,9 +98,6 @@ static uint32_t pair_out(uint8_t **adst, size_t *aremain, const pjson_obj asrc)
 	static const uint8_t d1[] = JSONDELIM_P;
 	static const uint8_t d2[] = JSONDELIM_O;
 	static const uint8_t tail[] = JSONTAIL;
-	static const uint8_t jfalse[] = { "false" };
-	static const uint8_t jtrue[] = { "true" };
-	static const uint8_t jnull[] = { "null" };
 
 	const uint8_t *src;
 
@@ -198,7 +180,7 @@ static uint32_t pair_out(uint8_t **adst, size_t *aremain, const pjson_obj asrc)
 		break; /* jVALSZ */
 
 	case jVALENUM:
-		a = sizeof(jfalse); /* "false" is the longest */
+		a = sizeof(pattern_false); /* "false" is the longest */
 #ifdef JSON_DEBUG_PRINT
 		xprintf("%d ", __LINE__);
 		xprintf("sizeof(jfalse)= %d\n", a);
@@ -209,13 +191,13 @@ static uint32_t pair_out(uint8_t **adst, size_t *aremain, const pjson_obj asrc)
 		}
 		switch (asrc->pjsonval->jvalenum) {
 		case jTRUE:
-			src = jtrue;
+			src = pattern_true;
 			break;
 		case jFALSE:
-			src = jfalse;
+			src = pattern_false;
 			break;
 		case jNULL:
-			src = jnull;
+			src = pattern_null;
 			break;
 		case jpad:
 		default:
@@ -336,33 +318,6 @@ fExit:
 }
 
 /**
-  * is_hex() checks is 4-byte string pointed by ptr a valid hex
-  * @param ptr - pointer to the first byte
-  * @return 1 if valid hex, 0 otherwise
-  */
-static uint32_t is_hex(const uint8_t *ptr)
-{
-	uint32_t result;
-	result = 0U;
-	uint8_t i;
-	for (i = 0U; i < 4U; i++) {
-		if ((*ptr < 0x30U) || (*ptr > 0x66U)) {
-			goto fExit;
-		}
-		if ((*ptr > 0x39U) && (*ptr < 0x41U)) {
-			goto fExit;
-		}
-		if ((*ptr > 0x46U) && (*ptr < 0x61U)) {
-			goto fExit;
-		}
-		ptr++;
-	}
-	result = 1; /* valid hex */
-fExit:
-	return result;
-}
-
-/**
   * check_esc checks is the string provided a valid esc sequence
   * @param ii - current symbol number
   * @param ptr - pointer which points to the reverse solidus (U+005C) found by caller
@@ -400,8 +355,9 @@ static ptrdiff_t check_esc(ptrdiff_t ii, const uint8_t **ptr, ptrdiff_t len)
 				goto fExit;
 			}
 			(*ptr)++; /* inc to point to the char after u */
-			if (is_hex(*ptr) ==
-			    1U) { /* check if next 4 chars represent a valid hex */
+
+			if (isHex(*ptr, 4U) == true) {
+				/* check if next 4 chars represent a valid hex */
 				(*ptr) += 4; /* inc by 4*/
 				result = 5;
 			} else {
@@ -507,7 +463,7 @@ uint32_t deserialize_json(const uint8_t *pbuf, const size_t payload_size,
 	uint32_t result = 0U;
 	/*	const uint8_t	head[] = JSONHEAD;*/
 
-	size_t slen = strlen((const char *)pbuf);
+	size_t slen = strlen((const char *)pbuf); /* trailng 0 is not counted */
 
 	if (slen != payload_size) {
 		result = JSON_ERR_MISC;
@@ -564,7 +520,7 @@ uint32_t deserialize_json(const uint8_t *pbuf, const size_t payload_size,
 	/* look for start of value. ..., 0x22, n*space, 0x3a, n*space, S */
 	/*                                        ^                    ^ */
 	/*                                    walk_ptr           start of value */
-	skip_spaces(&walk_ptr);   /* walk thru spaces */
+	skip_spaces(&walk_ptr); /* walk thru spaces */
 
 	if (*walk_ptr != 0x3aU) { /* didn't find colon */
 		result = JSON_ERR_BADSTRING;
@@ -579,9 +535,9 @@ uint32_t deserialize_json(const uint8_t *pbuf, const size_t payload_size,
 	enum jenum_t decoded = jpad;
 
 	if (*walk_ptr != 0x22U) {
-	/* not found string value leading double-quotes */
+		/* not found string value leading double-quotes */
 		decoded = decode_enum(&walk_ptr);
-		 /* if walk_ptr points at start of valid enum,   */
+		/* if walk_ptr points at start of valid enum,   */
 
 		/* decode enum and move walk_ptr to the first symbol after enum */
 		if (decoded != jpad) { /* valid enum found */
