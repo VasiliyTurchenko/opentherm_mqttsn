@@ -6,13 +6,13 @@
 import sys
 import os
 import re
+import json
 #import strings
 from pathlib2 import Path
 from datetime import date
 from datetime import datetime
 
-out_file_name = "buildinfo.h"
-build_file_name = "buildinfo.num"
+buildinfo_file_n = "buildinfo.h"
 
 if len(sys.argv) < 2:
     print("Usage " + sys.argv[0] + " <path>")
@@ -21,36 +21,44 @@ if len(sys.argv) < 2:
 out_path = sys.argv[1]
 skip_chars = len(out_path) + 1
 
-out_file_name = Path(os.path.join(out_path, out_file_name))
-build_file_name = Path(os.path.join(out_path, build_file_name))
+buildinfo_file_name = Path(os.path.join(out_path, buildinfo_file_n))
+current_build_num = -1
+new_build_string = "/* {\"BUILD\" : -1} */\n/* This file is auto-generated! Do not edit! */\n"
 
-current_buld = -1
-
-if (not(build_file_name.is_file())):
-	print("Warning! The file " + str(build_file_name) + " does not exist. The current build number will be set to 0!\n")
-	build_file = open(str(build_file_name), "w+")
-	build_file.write(str(current_buld))
-	build_file.close()
+if (not(buildinfo_file_name.is_file())):
+	print("Warning! The file " + str(buildinfo_file_n) + " does not exist. The file will be created and current build number will be set to 0!\n")
+	buildinfo_file = open(str(buildinfo_file_name), "w+")
+	buildinfo_file.write(str(new_build_string))
+	buildinfo_file.close()
 else:
-	build_file = open(str(build_file_name), "r")
-	current_buld_s = build_file.read()
-	current_buld = int(current_buld_s,10)
-	build_file.close()
+	buildinfo_file = open(str(buildinfo_file_name), "r")
+	read_data = buildinfo_file.read()
+#	print(read_data)
+	splitted = read_data.splitlines()
+#	print(splitted)
+        current_build_s = splitted[0]
+	current_build_s	= current_build_s.replace("/*","")
+       	current_build_s = current_build_s.replace("*/","")
+#	print(current_build_s)
+	parsed_json = json.loads(current_build_s)
+	current_build_num = parsed_json['BUILD']
+#	print(current_build_num)
+	buildinfo_file.close()
 
 #open and reset output file
-out_file = open(str(out_file_name), "w+")
-current_buld = current_buld + 1
+buildinfo_file = open(str(buildinfo_file_name), "w+")
+new_build_num = current_build_num + 1
+json = "{\"BUILD\" : "+ str(new_build_num) +"}"
 
-out_file.write("/* This file is auto-generated! Do not edit! */\n")
-out_file.write("static const char * buildNum = \"Build number: " + str(current_buld) + "\\n\";\n")
+build_string = "/* " + json + " */\n"
+buildinfo_file.write(build_string)
+buildinfo_file.write("/* This file is auto-generated! Do not edit! */\n")
+buildinfo_file.write("static const char * buildNum_s = \"Build number: " + str(new_build_num) + "\\n\";\n")
+buildinfo_file.write("static int buildNum_i = " + str(new_build_num) + ";\n")
 
 today = date.today()
 d = today.strftime("%d %B, %Y")
 now = datetime.now()
 current_time = now.strftime("%H:%M:%S")
-out_file.write("static const char * buildDateTime = \"Build time and date: " + current_time + "  " + d + "\\n\";\n")
-out_file.close()
-
-build_file = open(str(build_file_name), "w+")
-build_file.write(str(current_buld))
-build_file.close()
+buildinfo_file.write("static const char * buildDateTime = \"Build time and date: " + current_time + "  " + d + "\\n\";\n")
+buildinfo_file.close()

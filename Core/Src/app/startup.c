@@ -128,7 +128,7 @@ ErrorStatus AppStartUp(void)
 
 	xputs("\n\nStarting up...\n");
 	xputs(id);
-	xputs(buildNum);
+	xputs(buildNum_s);
 	xputs(buildDateTime);
 
 	Cold_Boot(); /* Cold_Boot always goes first */

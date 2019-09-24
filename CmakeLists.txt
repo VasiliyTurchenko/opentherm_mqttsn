@@ -168,7 +168,7 @@ target_compile_options		(
 				)
 
 target_link_options		(
-	                                ${MASTER_BOARD} PRIVATE
+	                                ${MASTER_BOARD} BEFORE PRIVATE
 					"-Wl,-Map=${MASTER_BOARD}.map"
 					"-Wl,-T${MASTER_LDSCRIPT}"
 					"-Wl,--gc-sections"
@@ -177,6 +177,12 @@ target_link_options		(
 					"-Wl,--cref"
 					${MASTER_COMPILE_FLAGS}
 					)
+target_link_libraries		(
+	                                ${MASTER_BOARD}
+					c
+					m
+					nosys
+				)
 
 
 STM32_ADD_HEX_BIN_TARGETS(${MASTER_BOARD})
@@ -201,7 +207,7 @@ target_compile_options		(
 					${SLAVE_COMPILE_FLAGS}
 				)
 
-target_link_options		(	${SLAVE_BOARD} PRIVATE
+target_link_options		(	${SLAVE_BOARD} BEFORE PRIVATE
 	                                "-Wl,-Map=${SLAVE_BOARD}.map"
 					"-Wl,-T${SLAVE_LDSCRIPT}"
 					"-Wl,--gc-sections"
@@ -210,6 +216,13 @@ target_link_options		(	${SLAVE_BOARD} PRIVATE
 					"-Wl,--cref"
 					${SLAVE_COMPILE_FLAGS}
 					)
+target_link_libraries		(
+	                                ${SLAVE_BOARD}
+					c
+					m
+					nosys
+				)
+
 
 STM32_ADD_HEX_BIN_TARGETS(${SLAVE_BOARD})
 STM32_PRINT_SIZE_OF_TARGETS(${SLAVE_BOARD})
