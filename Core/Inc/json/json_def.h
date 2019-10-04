@@ -18,9 +18,9 @@
 #define	JSONDELIM_O	", \""
 #define JSONDELIM_P	"\":"
 #define JSONTAIL	"}"
-#define MIN_ROOM	10U		/* {" ":" "}\0 - total 10 chars */
+#define MIN_ROOM	(uint32_t)10		/* {" ":" "}\0 - total 10 chars */
 
-#define	MAXJSONSTRING	32U
+#define	MAXJSONSTRING	(uint32_t)64
 
 enum	jenum_t				/*!< fixed JSON values */
 {

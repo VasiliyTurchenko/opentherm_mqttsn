@@ -156,7 +156,7 @@ void service_task_init(void)
 void service_task_run(void)
 {
 	static TickType_t xLastSyncTime = 0U;
-	static TickType_t xPeriod = pdMS_TO_TICKS(0U);
+	static TickType_t xPeriod = pdMS_TO_TICKS(RESYNC_MS);
 
 	i_am_alive(SERVICE_TASK_MAGIC);
 
@@ -173,9 +173,14 @@ void service_task_run(void)
 		if ( (NTP_sync(NTP1_cfg.pair) == SUCCESS) ||
 		     (NTP_sync(NTP2_cfg.pair) == SUCCESS) ) {
 			xLastSyncTime = xTaskGetTickCount();
-			xPeriod = pdMS_TO_TICKS(RESYNC_MS);
 		} else {
 			xLastSyncTime += pdMS_TO_TICKS(1000U);
+		}
+		arp_age_entries();
+
+		size_t n_entries = arp_get_capacity();
+		for(size_t i  = 0U; i < n_entries; i++) {
+			xputs(arp_get_entry_string(i));
 		}
 	}
 

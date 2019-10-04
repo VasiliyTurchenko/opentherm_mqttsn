@@ -16,6 +16,7 @@
 
 #include "lan.h"
 #include "xprintf.h"
+#include "hex_gen.h"
 
 #define NET_BUF_STAT
 
@@ -26,9 +27,8 @@
 uint8_t mac_addr[6];
 
 /* ARP MUTEX */
-static osMutexId ARP_MutexHandle __attribute__((section (".ccmram")));
-static osStaticMutexDef_t ARP_Mutex_ControlBlock __attribute__((section (".ccmram")));
-
+static osMutexId ARP_MutexHandle __attribute__((section(".ccmram")));
+static osStaticMutexDef_t ARP_Mutex_ControlBlock __attribute__((section(".ccmram")));
 
 // for statistic purpose
 
@@ -70,11 +70,6 @@ static socket_t sockets[NUM_SOCKETS]; /*  sockets pool */
 /* each net_buf belongs to the one of the sockets */
 /* each eth_buf_state belongs to the one of the sockets*/
 static enum EthBufState eth_buf_state[NUM_ETH_BUFFERS]; /* states of the ethernet buffers */
-
-/**
- * @brief arpCacheWriteIndex index to write new ARP entry
- */
-static uint8_t arpCacheWriteIndex;
 
 /**
  * @brief arp_cache ARP cache array
@@ -137,7 +132,7 @@ static uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen, const uint
  * @param readTimeOutMS
  * @return
  */
-socket_p set_notif_params(socket_p soc, void * TaskToNotify, uint32_t readTimeOutMS)
+socket_p set_notif_params(socket_p soc, void *TaskToNotify, uint32_t readTimeOutMS)
 {
 	socket_p retVal = soc;
 	if (soc != NULL) {
@@ -1356,26 +1351,65 @@ static eth_frame_t *ip_filter(eth_frame_t *frame, uint16_t len)
 /*
  * ARP
  */
+/**
+ * @brief arp_get_entry_string returns pointer to the string
+ * @param number index of the entry
+ * @return pointer to the result string or NULL
+ */
+char * arp_get_entry_string(size_t number)
+{
+	static const char retVal_template[] = {"AA:BB:CC:DD:EE:FF AAA.BBB.CCC.DDD 99999\n\0"};
+	(void)retVal_template;
+	static const size_t t_len = sizeof(retVal_template);
+	static char retVal[41];
+	char * ptarget = NULL;
+	if (number < ARP_CACHE_SIZE) {
+		/* convert entry to the string */
+		ptarget = &retVal[0];
+		for (size_t i = 0U; i < 6U; i++) { /* MAC */
+			*ptarget = mybtol((arp_cache[number].mac_addr[i]  >> 4U) & 0x0F);
+			ptarget++;
+			*ptarget = mybtol(arp_cache[number].mac_addr[i] & 0x0F);
+			ptarget++;
+			*ptarget = ':';
+			ptarget++;
+		}
+		/* IP addr */
+		*(ptarget - 1U) = ' ';
+		size_t shift = 0U;
+		for (size_t i = 0U; i < 4U; i++) {
+			uint8_t b = (uint8_t)(arp_cache[number].ip_addr >> shift);
+			uint8_to_asciiz(b, ptarget);
+			shift +=8U;
+			ptarget += 3U;
+			*ptarget = '.';
+			ptarget++;
+		}
+		*(ptarget - 1U) = ' ';
+		uint16_to_asciiz((uint16_t)arp_cache[number].age, ptarget);
+		*(ptarget + 5) = '\n';
+		ptarget = retVal;
+	}
+	return ptarget;
+}
+
 
 /** decrements time to live of the arp cache entry every 1s
   * invalidates the outdated entry
   * @param none
   * @return none
   */
-
 void arp_age_entries(void)
 {
 	uint8_t i;
-//	taskENTER_CRITICAL();
 	TAKE_MUTEX(ARP_MutexHandle);
 	for (i = 0; i < ARP_CACHE_SIZE; i++) {
 		if (arp_cache[i].age > 0) {
 			arp_cache[i].age--;
 		} else {
-			memset(&arp_cache[i], 0, sizeof (arp_cache_entry_t));
+			memset(&arp_cache[i], 0, sizeof(arp_cache_entry_t));
 		}
-//	taskEXIT_CRITICAL();
-	GIVE_MUTEX(ARP_MutexHandle);
+		GIVE_MUTEX(ARP_MutexHandle);
 	}
 }
 
@@ -1389,7 +1423,7 @@ static uint8_t *arp_search_cache(uint32_t node_ip_addr)
 	int i;
 	uint8_t *result = NULL;
 	i = arp_get_cache_index(node_ip_addr);
-	if ( i != -1 ) {
+	if (i != -1) {
 		result = arp_cache[i].mac_addr;
 	}
 	return result;
@@ -1411,7 +1445,7 @@ static int arp_get_cache_index(uint32_t node_ip_addr)
 		}
 	}
 	GIVE_MUTEX(ARP_MutexHandle);
-	return  rv;
+	return rv;
 }
 
 /**
@@ -1475,6 +1509,24 @@ fExit:
 }
 
 /**
+ * @brief arp_get_oldest_index returns the oldest arp entry index
+ * @return
+ */
+static int arp_get_oldest_index(void)
+{
+	int retVal = 0;
+	int32_t oldest = INT32_MAX;
+	uint8_t i;
+	for (i = 0; i < ARP_CACHE_SIZE; i++) {
+		if (arp_cache[i].age < oldest) {
+			oldest = arp_cache[i].age;
+			retVal = i;
+		}
+	}
+	return retVal;
+}
+
+/**
   * processes received ARP packet
   * @param *frame pointer to the full eth. packet
   * @param len length of the packet
@@ -1496,29 +1548,26 @@ static void arp_filter(eth_frame_t *frame, uint16_t len)
 				msg->ip_addr_from = ip_addr;
 				eth_reply(frame, sizeof(arp_message_t));
 				break;
-				}
+			}
 			case ARP_TYPE_RESPONSE: {
-//				if (arp_search_cache(msg->ip_addr_from) == NULL) {
-				int idx;
+				int idx = 0;
+				/* was there this IP already ?*/
 				idx = arp_get_cache_index(msg->ip_addr_from);
-				arpCacheWriteIndex = (idx == -1) ? arpCacheWriteIndex : (uint8_t)idx;
-
-//					taskENTER_CRITICAL();
-					TAKE_MUTEX(ARP_MutexHandle);
-
-					arp_cache[arpCacheWriteIndex].ip_addr = msg->ip_addr_from;
-					memcpy(arp_cache[arpCacheWriteIndex].mac_addr,
-					       msg->mac_addr_from, 6);
-					arp_cache[arpCacheWriteIndex].age = (int32_t)ARP_TIMEOUT_S;
-
-					arpCacheWriteIndex++;
-					if (arpCacheWriteIndex == (uint8_t)ARP_CACHE_SIZE) {
-						arpCacheWriteIndex = 0u;
+				if (idx == -1) {
+					/* is there free entry ? */
+					idx = (uint8_t)arp_get_cache_index(0);
+					if (idx == -1) {
+						/* no free entry */
+						idx = (uint8_t)arp_get_oldest_index();
 					}
-//					taskEXIT_CRITICAL();
-					GIVE_MUTEX(ARP_MutexHandle);
 				}
+				TAKE_MUTEX(ARP_MutexHandle);
+				arp_cache[idx].ip_addr = msg->ip_addr_from;
+				memcpy(arp_cache[idx].mac_addr, msg->mac_addr_from, 6);
+				arp_cache[idx].age = (int32_t)ARP_TIMEOUT_S;
+				GIVE_MUTEX(ARP_MutexHandle);
 				break;
+			}
 			}
 		}
 	}
@@ -1727,12 +1776,9 @@ static uint16_t read_sock(socket_p soc, uint8_t *buf, int32_t buflen, const uint
 		uint32_t timeout = pdMS_TO_TICKS(soc->readTimeOutMS);
 		uint32_t notif_val;
 		if (soc->TaskToNotify != NULL) {
-			if (xTaskNotifyWait(ULONG_MAX,
-					    ULONG_MAX,
-					    &notif_val,
-					    timeout) != pdTRUE) {
-						goto fExit;
-					    }
+			if (xTaskNotifyWait(ULONG_MAX, ULONG_MAX, &notif_val, timeout) != pdTRUE) {
+				goto fExit;
+			}
 		} else {
 			while ((soc->mode & SOC_NEW_DATA) != SOC_NEW_DATA) {
 				/** @TODO add wait for semaphore here 		*/
@@ -1912,7 +1958,6 @@ static eth_frame_t *udp_packet_callback(eth_frame_t *frame, uint16_t len)
 		    ((sockets[i].mode & SOC_MODE_READ) != 0U) && /* + 15-Mar-2018  */
 		    (sockets[i].proto == (uint8_t)IP_PROTOCOL_UDP) &&
 		    (sockets[i].loc_port == ntohs(udp->to_port))) {
-
 			/* receive from ANY port added 11-03-2018 */
 			sockets[i].rem_port = (sockets[i].rem_port == 0U) ? ntohs(udp->from_port) :
 									    sockets[i].rem_port;
@@ -1938,12 +1983,12 @@ static eth_frame_t *udp_packet_callback(eth_frame_t *frame, uint16_t len)
 		} /* end of the "5 conditions" if */
 	}	 /* end of for i loop */
 	taskEXIT_CRITICAL();
-/* notify task here */
-/* notification added 06-Sep-2019 */
+	/* notify task here */
+	/* notification added 06-Sep-2019 */
 	if ((needNotify) && (sockets[i].TaskToNotify != NULL)) {
-		xTaskNotify(sockets[i].TaskToNotify,	 /* the task which is waiting for the data */
-				(uint32_t)(&sockets[i]), /* pointer for fast socket access */
-				eSetValueWithOverwrite);
+		xTaskNotify(sockets[i].TaskToNotify, /* the task which is waiting for the data */
+			    (uint32_t)(&sockets[i]), /* pointer for fast socket access */
+			    eSetValueWithOverwrite);
 	}
 	udp_callbacks++;
 	return retval;

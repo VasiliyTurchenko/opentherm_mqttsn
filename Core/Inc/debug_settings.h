@@ -35,7 +35,7 @@
 
 /* DAQ section */
 
-//#define DAQ_DEBUG_PRINT
+#define DAQ_DEBUG_PRINT
 
 /* Manchester task section */
 //#define MANCH_TASK_DEBUG_PRINT 1

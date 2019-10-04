@@ -23,6 +23,7 @@ set(GROUP_CORE_SRC_HELPERS
 		Core/Src/helpers/messages.c
 		Core/Src/helpers/MQTT_config_helper.c
 		Core/Src/helpers/opentherm_wrappers.c
+		Core/Src/helpers/num_helpers.c
 )
 
 set(GROUP_CORE_SRC_JSON

@@ -47,7 +47,8 @@
 #define ARP_TIMEOUT		200U	/*milliseconds */
 #define NUM_ARP_RETRIES		50U
 
-#define	ARP_TIMEOUT_S		((uint32_t)(2*60*60))	/* 2 hours */
+/* every 30 s decrement occurs */
+#define	ARP_TIMEOUT_S		((uint32_t)(2*60*2))	/* 2 hours */
 
 
 #define	START_EUPH_PORT		50000U
@@ -472,7 +473,18 @@ uint16_t read_socket(socket_p soc, uint8_t* buf, int32_t buflen);
   */
 void	nb_stat(void);
 
-/** decrements time to live of the arp cache entry every 1ms
+/**
+ * @brief arp_get_capacity returns number of the entries
+ * @return
+ */
+static inline size_t arp_get_capacity(void)
+{
+	return ARP_CACHE_SIZE;
+}
+
+char * arp_get_entry_string(size_t number);
+
+/** decrements time to live of the arp cache entry every 1s
   * invalidates the outdated entry
   * @param none
   * @return none

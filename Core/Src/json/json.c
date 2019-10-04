@@ -9,8 +9,18 @@
 #include "json.h"
 #include "ascii_helpers.h"
 
-#include "debug_settings.h"
+#if DEBUG == 1
+
+#define xprintf printf
+#define JSON_DEBUG_PRINT
+
+#elif DEBUG == 0
+
 #include "xprintf.h"
+
+#else
+#error "ERROR. DEBUG NOT DEFINED!"
+#endif
 
 static const uint8_t pattern_false[] = { "false" };
 static const uint8_t pattern_true[] = { "true" };
@@ -18,10 +28,12 @@ static const uint8_t pattern_null[] = { "null" };
 
 /* private funcrions */
 static inline void skip_spaces(const uint8_t **ptr);
-static uint32_t pair_out(uint8_t **adst, size_t *aremain, const pjson_obj asrc);
-static enum jenum_t decode_enum(const uint8_t **ptr);
-static ptrdiff_t check_esc(ptrdiff_t ii, const uint8_t **ptr, ptrdiff_t len);
-static size_t get_jstrlen(const uint8_t *ptr);
+NDEBUG_STATIC uint32_t pair_out(uint8_t **adst, size_t *aremain,
+				const pjson_obj asrc);
+NDEBUG_STATIC enum jenum_t decode_enum(const uint8_t **ptr);
+NDEBUG_STATIC size_t check_esc(size_t sym_index, const uint8_t *ptr,
+			       size_t len);
+NDEBUG_STATIC size_t get_jstrlen(const uint8_t *ptr);
 
 /**
  * @brief skip_spaces
@@ -30,7 +42,7 @@ static size_t get_jstrlen(const uint8_t *ptr);
  */
 /* ECMA-404 defines these symbols as whitespaces */
 #define IS_ECMA_WHITESPACE(A)                                                  \
-	(((A) == 0x08U) || ((A) == 0x09U) || ((A) == 0x0AU) || ((A) == 0x0DU))
+	(((A) == 0x20U) || ((A) == 0x09U) || ((A) == 0x0AU) || ((A) == 0x0DU))
 
 static inline void skip_spaces(const uint8_t **ptr)
 {
@@ -44,7 +56,7 @@ static inline void skip_spaces(const uint8_t **ptr)
  * @param ptr address of the pointer to the current buffer position
  * @return decoded value or jpad if bad enum
  */
-static enum jenum_t decode_enum(const uint8_t **ptr)
+NDEBUG_STATIC enum jenum_t decode_enum(const uint8_t **ptr)
 {
 	enum jenum_t decoded = jpad;
 	const uint8_t *pattern = NULL;
@@ -90,7 +102,8 @@ fExit:
   * @return 0 if no error or error code
   *
   **/
-static uint32_t pair_out(uint8_t **adst, size_t *aremain, const pjson_obj asrc)
+NDEBUG_STATIC uint32_t pair_out(uint8_t **adst, size_t *aremain,
+				const pjson_obj asrc)
 {
 	uint32_t result;
 	result = 0U;
@@ -253,7 +266,7 @@ fExit:
   * @return 0 if no error or error code
   *
   */
-uint32_t serialize_json(const uint8_t *pbuf, const size_t bufsize,
+uint32_t serialize_json(uint8_t *pbuf, const size_t bufsize,
 			json_obj_t *jsrc)
 {
 	static const uint8_t head[] = JSONHEAD;
@@ -281,7 +294,7 @@ uint32_t serialize_json(const uint8_t *pbuf, const size_t bufsize,
 	uint8_t *dst;
 
 	src = head;
-	dst = (uint8_t *)pbuf;
+	dst = pbuf;
 	while (*src != 0x00U) {
 		*dst = *src;
 		dst++;
@@ -319,56 +332,38 @@ fExit:
 
 /**
   * check_esc checks is the string provided a valid esc sequence
-  * @param ii - current symbol number
-  * @param ptr - pointer which points to the reverse solidus (U+005C) found by caller
+  * @param ii - current symbol index starting from 0
+  * @param ptr - pointer which points to the start of the string
   * @param len - length of the string defined by the caller
   * @return length of the valid esc sequence or 0 in sequence is invalid
   */
-static ptrdiff_t check_esc(ptrdiff_t ii, const uint8_t **ptr, ptrdiff_t len)
+NDEBUG_STATIC size_t check_esc(size_t sym_index, const uint8_t *ptr, size_t len)
 {
-	ptrdiff_t result;
-	result = 0;
+	size_t result = 0U;
+
 	/* ii + esc_len must be < len */
 	/* result length must be less than 6 bytes! */
-	uint8_t i;
-	(*ptr)++; /* skip over leading reverse solidus (U+005C) */
-	ii++;
-	for (i = 0U; i < 5U; i++) {
-		switch (**ptr) {
-		case 0x22U: /* quotation mark */
-		case 0x5cU: /* reverse solidus */
-		case 0x2fU: /* solidus */
-		case 0x62U: /* b */
-		case 0x66U: /* f */
-		case 0x6eU: /* n */
-		case 0x72U: /* r */
-		case 0x74U: /* t */
-			    /* allowed single-char esc seq */
-			(*ptr)++;
-			result = (ptrdiff_t)1;
-			goto fExit;
-			break;
-		case 0x75U: /* u */
-			if ((len - ii) <
-			    (ptrdiff_t)5) { /* is there room for 4 sybols ?*/
-				result = (ptrdiff_t)0;
-				goto fExit;
-			}
-			(*ptr)++; /* inc to point to the char after u */
+	sym_index++; /* skip over leading reverse solidus (U+005C) */
 
-			if (isHex(*ptr, 4U) == true) {
-				/* check if next 4 chars represent a valid hex */
-				(*ptr) += 4; /* inc by 4*/
-				result = 5;
-			} else {
-				result = 0; /* not valid esc seq */
-			}
+	/* check for single byte escapes */
+	uint8_t sym = ptr[sym_index];
+	if ((sym == 0x22U) || /* quotation mark */
+	    (sym == 0x5CU) || /* reverse solidus */
+	    (sym == 0x2fU) || /* solidus */
+	    (sym == 0x62U) || /* b */
+	    (sym == 0x66U) || /* f */
+	    (sym == 0x6eU) || /* n */
+	    (sym == 0x72U) || /* r */
+	    (sym == 0x74U) /* t */) {
+		result = 1U;
+		goto fExit;
+	}
+
+	/* check for u hex hex hex hex */
+	if ((sym == 0x75U) && ((sym_index + 4U) < len)) { /* u */
+		if (isHex(&ptr[sym_index], 4U) == true) {
+			result = 4U;
 			goto fExit;
-			break;
-		default:
-			result = 0; /* not valid esc seq */
-			goto fExit;
-			break;
 		}
 	}
 fExit:
@@ -380,74 +375,145 @@ fExit:
   * @return 0 if string is not valid; length of the string othervise
   *
   */
-static size_t get_jstrlen(const uint8_t *ptr)
+NDEBUG_STATIC size_t get_jstrlen(const uint8_t *ptr)
 {
 	size_t result = 0U;
-	ptrdiff_t len1 = 0;
-	const uint8_t *ptr1 = ptr;
-
-	/* scan for 0x00 */
-	while (*ptr1 != 0x00U) { /* find length of valid c string */
-				 /*		if (len1 > MAXJSONSTRING) { */
-		if (len1 == MAXJSONSTRING) {
-			break; /* bad string - too long */
-		}
-		len1++;
-		ptr1++;
-	}
+	size_t len1 = strlen((const char *)ptr);
 
 	if ((len1 == 0) || (len1 == MAXJSONSTRING)) {
 		goto fExit; /* bad string - too short or too long */
 	}
 
 	/* scan for " */
-	ptr1 = ptr;
-	ptrdiff_t esc_len; /* length of esc sequence  in the stream */
-	ptrdiff_t i = 0;
+	size_t esc_len; /* length of esc sequence  in the stream */
 
+	size_t volatile i = 0U;
 	while (i < len1) { /* find json string */
-		if (*ptr1 < 0x20U) {
+		if (ptr[i] < 0x20U) {
 			/* chars from 0x00 to 0x01f are not allowed in the string */
-			result = 0;
 			break;
 		}
 
-		switch (*ptr1) { /* here go the symbols which are greater than 0x01f */
+		switch (ptr[i]) { /* here go the symbols which are greater than 0x01f */
 		case 0x5c: { /* reverse solidus (U+005C) found */
-			if (i == (len1 - (ptrdiff_t)1)) {
+			if (i == (len1 - 1U)) {
 				/* 0x5c can not be the last symbol */
-				result = 0;
 				goto fExit;
 			}
 
 			/*check for valid esc sequence */
-			esc_len = check_esc(i, &ptr1, len1);
+			esc_len = check_esc(i, ptr, len1);
 
-			if (esc_len == 0) {
-				result = 0;
+			if (esc_len == 0U) {
 				goto fExit; /* esc seq is invalid */
 			} else {
-				i = i + esc_len;
-				/* ptr1 is already modified by check_esc() */
+				i += esc_len;
 			}
 			break;
 		}
 		case 0x22: { /* quotation mark character (U+0022) found */
-			result = (size_t)i;
+			result = i;
 			goto fExit; /* the length of the string found */
 			break;
 		}
 		default: {
-			ptr1++; /* valid chars go here */
 			break;
 		}
 		}
 		i++;
 	}
-	result = (size_t)i;
 fExit:
 	return result;
 }
+
+/* JSON FORMAT STRING */
+/*
+   TOKENS ARE:
+
+*/
+#if(0)
+typedef enum JSON_FORMAT_TOK_ {
+	JFT_SPACE		= 0x20,
+	JFT_CURLY_BR_OPEN	= 0x7B,
+	JFT_CURLY_BR_CL		= 0x7D,
+	JFT_COLON		= 0X3A,
+	JFT_QUOT		= 0x22,
+	JFT_TXT_NAME		= 0xEE,
+	JFT_TXT_VAL		= 0xEF,
+	JFT_ENDL		= 0x00,
+} JSON_FORMAT_TOKEN;
+						/*____{___"____"this_is_a_text"*/
+static const JSON_FORMAT_TOKEN fmt_string[] = {JFT_SPACE, JFT_CURLY_BR_OPEN, JFT_SPACE, JFT_QUOT, JFT_TXT_NAME, JFT_QUOT, \
+						/*____:____"this_is_a_text_"_____*/
+						JFT_SPACE, JFT_COLON, JFT_SPACE, JFT_QUOT, JFT_TXT_VAL, JFT_QUOT, JFT_SPACE, \
+						/*_____}______\0*/
+						JFT_CURLY_BR_CL, JFT_SPACE, JFT_ENDL};
+
+static const size_t fmt_string_l = sizeof (fmt_string) / sizeof (fmt_string[0]);
+uint32_t deserialize_json_f(const uint8_t *pbuf, const size_t payload_size,
+			  json_obj_t *jdst)
+{
+	uint32_t result = JSON_ERR_MISC;
+	if( payload_size != strlen((const char *)pbuf) ) {
+		goto fExit;
+	}
+	const uint8_t *walk_ptr = pbuf; /*!< ptr to current char */
+	for (size_t i = 0U; i < fmt_string_l; i++) {
+
+		if ( fmt_string[i] == JFT_SPACE) {
+			skip_spaces(&walk_ptr);
+			continue;
+		}
+		if ( (fmt_string[i] == JFT_CURLY_BR_OPEN) && (*walk_ptr != 0x7bU) ) {
+			result = JSON_ERR_OBSTART;
+			break;
+		} else {
+			walk_ptr++;
+		}
+		if ( (fmt_string[i] == JFT_QUOT) && (*walk_ptr != 0x22U) ) {
+			result = JSON_ERR_OBSTART;
+			break;
+		} else {
+			walk_ptr++;
+		}
+		/* text name starts here */
+		if ( fmt_string[i] == JFT_TXT_NAME ) {
+			size_t jstrlen = get_jstrlen(walk_ptr);
+			if (jstrlen == 0U) {
+				result = JSON_ERR_BADSTRING;
+				break;
+			}
+			 /* fill jname part with string */
+			memcpy(jdst->pjname, walk_ptr, jstrlen);
+			*(jdst->pjname + jstrlen) = 0x00;
+			walk_ptr += jstrlen;
+		}
+
+		if ( (fmt_string[i] == JFT_COLON) && (*walk_ptr != 0x3A)) {
+			result = JSON_ERR_BADSTRING;
+			break;
+		} else {
+			walk_ptr++;
+		}
+
+		if ( fmt_string[i] == JFT_TXT_VAL ) {
+			/* two options here : enum or string */
+
+			size_t jstrlen = get_jstrlen(walk_ptr);
+			if (jstrlen == 0U) {
+				result = JSON_ERR_BADSTRING;
+				break;
+			}
+			/* fill jval part with string */
+
+
+
+	}
+
+fExit:
+	return result;
+}
+#endif
 
 /**
   * deserialize_json creates json object(s) from the input stringz
@@ -461,17 +527,13 @@ uint32_t deserialize_json(const uint8_t *pbuf, const size_t payload_size,
 			  json_obj_t *jdst)
 {
 	uint32_t result = 0U;
-	/*	const uint8_t	head[] = JSONHEAD;*/
-
 	size_t slen = strlen((const char *)pbuf); /* trailng 0 is not counted */
-
 	if (slen != payload_size) {
 		result = JSON_ERR_MISC;
 		goto fExit;
 	}
 
 	const uint8_t *walk_ptr; /*!< ptr to current char */
-
 	walk_ptr = pbuf;
 	skip_spaces(&walk_ptr);
 
@@ -479,7 +541,6 @@ uint32_t deserialize_json(const uint8_t *pbuf, const size_t payload_size,
 		result = JSON_ERR_OBSTART;
 		goto fExit;
 	}
-
 	walk_ptr++;
 
 	skip_spaces(&walk_ptr);
@@ -487,7 +548,6 @@ uint32_t deserialize_json(const uint8_t *pbuf, const size_t payload_size,
 		result = JSON_ERR_OBSTART;
 		goto fExit;
 	}
-
 	walk_ptr++;
 
 	/* find "name string" length */
@@ -514,7 +574,6 @@ uint32_t deserialize_json(const uint8_t *pbuf, const size_t payload_size,
 #endif
 		goto fExit; /* something goes wrong!!!*/
 	}
-
 	walk_ptr++; /* now it points to the first symbol after \" */
 
 	/* look for start of value. ..., 0x22, n*space, 0x3a, n*space, S */
@@ -526,9 +585,7 @@ uint32_t deserialize_json(const uint8_t *pbuf, const size_t payload_size,
 		result = JSON_ERR_BADSTRING;
 		goto fExit;
 	}
-
 	walk_ptr++;
-
 	skip_spaces(&walk_ptr); /* walk thru spaces */
 
 	/* here starts value */

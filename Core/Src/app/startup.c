@@ -105,6 +105,15 @@ static const struct ip_cfg IP_Cfg_File_Default = {
  */
 
 /**
+ * @brief reste_after_delay
+ */
+static void reset_after_delay(void)
+{
+	HAL_Delay(500U);
+	NVIC_SystemReset();
+}
+
+/**
  * @brief AppStartUp
  * @return ERROR or SUCCESS
  */
@@ -151,28 +160,28 @@ ErrorStatus AppStartUp(void)
 		/* check media */
 		if (Quick_FRAM_Test() != SUCCESS) {
 			xputs("FRAM test failed! Rebooting.\n");
-			NVIC_SystemReset();
+			reset_after_delay();
 		}
 		if (Format(&Media0) != SUCCESS) {
 			xputs("Media formatting failed! Rebooting.\n");
-			NVIC_SystemReset();
+			reset_after_delay();
 		}
 		/* create ip config file */
 		res = SaveIPCfg(&Media0);
 		if (res != FR_OK) {
 			xputs(FRESULT_String(res));
 			xputs(" SaveIPCfg() failed! Rebooting.\n");
-			NVIC_SystemReset();
+			reset_after_delay();
 		} else {
 			/* good reboot */
 			xputs("SaveIPCfg() successful! Rebooting.\n");
-			NVIC_SystemReset();
+			reset_after_delay();
 		}
 
 	} else if (res != FR_OK) {
 		xputs(FRESULT_String(res));
 		xputs("\nDisk error! Rebooting.\n");
-		NVIC_SystemReset();
+		reset_after_delay();
 	} else {
 		xputs("Disk is OK.\n");
 	}
@@ -190,8 +199,8 @@ ErrorStatus AppStartUp(void)
 			xputs("error!\n");
 		}
 		xputs("Rebooting\n");
-		NVIC_SystemReset();
-	};
+		reset_after_delay();
+	}
 	/* ip configuration retrieved  */
 	xputs("IP configuration OK!\n");
 	lan_init();
@@ -247,11 +256,11 @@ static FRESULT SaveIPCfg(const Media_Desc_t *media)
 	const size_t datalen = sizeof(IP_Cfg_File_Default);
 	size_t bw;
 
-	retVal = DeleteFile((Media_Desc_t *)media, IP_Cfg_File);
+	retVal = DeleteFile(media, IP_Cfg_File);
 	if ((retVal == FR_OK) || (retVal == FR_NO_FILE)) {
-		retVal = WriteBytes((Media_Desc_t *)media, IP_Cfg_File, 0U,
+		retVal = WriteBytes(media, IP_Cfg_File, 0U,
 				    datalen, &bw,
-				    (uint8_t *)&IP_Cfg_File_Default);
+				    (const uint8_t *)&IP_Cfg_File_Default);
 
 		if (bw != datalen) {
 			retVal = FR_INVALID_PARAMETER;
@@ -273,7 +282,7 @@ static ErrorStatus Init_NIC(const Media_Desc_t *media)
 	struct ip_cfg buf;
 	size_t br = 0U;
 
-	res = ReadBytes((Media_Desc_t *)media, IP_Cfg_File, 0U,
+	res = ReadBytes(media, IP_Cfg_File, 0U,
 			sizeof(struct ip_cfg), &br, (uint8_t *)&buf);
 	if ((res != FR_OK) || (br != sizeof(struct ip_cfg))) {
 		goto fExit;
