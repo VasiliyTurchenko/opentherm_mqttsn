@@ -8,7 +8,7 @@
 
 #include "FreeRTOS.h"
 #include "watchdog.h"
-#include "xprintf.h"
+#include "logging.h"
 #include "lan.h"
 #include "task_tokens.h"
 
@@ -21,10 +21,9 @@ extern osMutexId ETH_Mutex01Handle;
  */
 void lan_poll_task_init(void)
 {
-	char * task_name = "lan_poll_task";
 	/* watchdog magic */
 	register_magic(LAN_POLL_TASK_MAGIC);
-	messages_TaskInit_OK(task_name);
+	messages_TaskInit_OK();
 }
 
 /**

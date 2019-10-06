@@ -10,7 +10,7 @@
 
 #include "watchdog.h"
 #include "lan.h"
-#include "xprintf.h"
+#include "logging.h"
 #include "task_tokens.h"
 
 #include "config_files.h"
@@ -25,12 +25,13 @@
 
 #include "opentherm.h"
 #include "opentherm_json.h"
+#include "debug_settings.h"
 
 extern const Media_Desc_t Media0;
 extern osMutexId ETH_Mutex01Handle;
 
 extern tMV *OPENTHERM_getMV_for_Pub(size_t i);
-extern ldid_t OPENTHERM_GetNextMVLD(uint16_t *start_index);
+extern ldid_t OPENTHERM_GetNextMV_LD_For_Pub(uint16_t *start_index);
 
 /* all in the one */
 static const struct MQTT_parameters MQTT_pub_parameters = {
@@ -93,8 +94,8 @@ void publish_task_run(void)
 	static uint32_t conn_attempts = 0U;
 	while (mqtt_sn_init_context(&mqttsncontext01, &MQTT_pub_working_set,
 				    &MQP_IP_cfg) != SUCCESS) {
-#ifdef MQTT_SN_PUB_DEBUG_PRINT
-		xputs("initializing publish context...\n");
+#if MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL
+		log_xputs(MSG_LEVEL_INFO,"initializing publish context...");
 #endif
 		mqtt_sn_deinit_context(&mqttsncontext01);
 		osDelay(200U);
@@ -104,8 +105,8 @@ void publish_task_run(void)
 /* 2.	context initialized, connect  */
 	while (mqttsncontext01.state != CONNECTED) {
 		conn_attempts++; /* increment attempts counter */
-#ifdef MQTT_SN_PUB_DEBUG_PRINT
-		xprintf("publish connection attempt %d\n", conn_attempts);
+#if MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL
+		log_xprintf(MSG_LEVEL_INFO, "publish connection attempt %d\n", conn_attempts);
 #endif
 		if (mqtt_sn_connect(&mqttsncontext01) == SUCCESS) {
 			break;
@@ -121,16 +122,15 @@ void publish_task_run(void)
 	do {
 		/* request the LD to be registered */
 		ldid_t ld_id;
-		ld_id = OPENTHERM_GetNextMVLD(&mqttsncontext01.currPubSubMV);
+		ld_id = OPENTHERM_GetNextMV_LD_For_Pub(&mqttsncontext01.currPubSubMV);
 		if (mqttsncontext01.currPubSubMV == 0xFFFF) {
 			/* end of array reached */
 			break;
 		}
-#ifdef MQTT_SN_PUB_DEBUG_PRINT
-		xprintf("registering LDID:%d\n", nextLD);
+#if MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL
+		log_xprintf(MSG_LEVEL_EXT_INF, "registering LDID:%d\n", nextLD);
 #endif
-		regresult = mqtt_sn_register_topic(&mqttsncontext01,
-						   ld_id);
+		regresult = mqtt_sn_register_topic(&mqttsncontext01, ld_id);
 		if (regresult == ERROR) {
 			break;
 		} /* exit the loop with regresult = error */
@@ -154,8 +154,9 @@ void publish_task_run(void)
 			for (size_t i = 0U; i < MV_ARRAY_LENGTH; i++) {
 				/* get MV */
 
-				tMV *pMV = OPENTHERM_getMV_for_Pub(
-					i); /* mutex lock !*/
+				/* mutex lock ?*/
+				const tMV *pMV = OPENTHERM_getMV_for_Pub(i);
+				 /* mutex unlock ?*/
 
 				if (pMV == NULL) {
 					/* this MV is not suitable for publishing */
@@ -188,8 +189,8 @@ void publish_task_run(void)
 	ErrorStatus deinitresult;
 	deinitresult = mqtt_sn_deinit_context(&mqttsncontext01);
 	if (deinitresult == ERROR) {
-#ifdef MQTT_SN_PUB_DEBUG_PRINT
-		xputs("mqtt_sn_deinit_context(pub_context) error!\n");
+#if MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR
+		log_xputs(MSG_LEVEL_FATAL,"mqtt_sn_deinit_context(pub_context) error!");
 #endif
 		/* need reboot */
 		for (;;) {

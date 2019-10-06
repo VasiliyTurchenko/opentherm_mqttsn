@@ -6,47 +6,37 @@
  *  @date 23-Mar-2019
  */
 
-#include "xprintf.h"
+#include "logging.h"
 
-static char * init_msg = " initialization";
-static char * rebooting = " rebooting.\n";
-static char * started = " started.\n";
+//static char * init_msg = " initialization";
+//static char * rebooting = " rebooting.\n";
+//static char * started = " started.\n";
 
-char *params_load = " parameters load";
-char *params_loaded = "ed\n";
-char *params_not_loaded = "ing error\n";
+//char *params_load = " parameters load";
+char *params_loaded = " parameters loaded";
+char *params_not_loaded = " parameters loading error";
 
-char *error_saving = "Error saving ";
-char *cfg_file = " cfg file.\n";
+char *error_saving = "Error saving config file";
+//char *cfg_file = " cfg file.\n";
 
 
-
-void messages_Task_started(const char * msg)
+void messages_Task_started(void)
 {
-	xputs(msg);
-	xputs(started);
+	log_xputs(MSG_LEVEL_TASK_INIT, " started.");
 }
 
-void messages_TaskInit_started(const char * msg)
+void messages_TaskInit_started(void)
 {
-	xputs(msg);
-	xputs(init_msg);
-	xputs(started);
+	log_xputs(MSG_LEVEL_TASK_INIT, " initialization started.");
 }
 
-void messages_TaskInit_OK(const char * msg)
+void messages_TaskInit_OK(void)
 {
-	xputs(msg);
-	xputs(init_msg);
-	xputs(" OK.\n");
-
+	log_xputs(MSG_LEVEL_TASK_INIT, " initialization OK.");
 }
 
-void messages_TaskInit_fail(const char * msg)
+void messages_TaskInit_fail(void)
 {
-	xputs(msg);
-	xputs(init_msg);
-	xputs(" failed,");
-	xputs(rebooting);
+	log_xputs(MSG_LEVEL_TASK_INIT, " initialization failed. Rebooting.");
 }
 

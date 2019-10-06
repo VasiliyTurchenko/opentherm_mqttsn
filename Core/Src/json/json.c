@@ -9,14 +9,14 @@
 #include "json.h"
 #include "ascii_helpers.h"
 
-#if DEBUG == 1
+#if JSON_DEBUG == 1
 
 #define xprintf printf
 #define JSON_DEBUG_PRINT
 
-#elif DEBUG == 0
+#elif JSON_DEBUG == 0
 
-#include "xprintf.h"
+#include "logging.h"
 
 #else
 #error "ERROR. DEBUG NOT DEFINED!"

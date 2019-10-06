@@ -10,7 +10,7 @@
 #include "watchdog.h"
 #include "lan.h"
 #include "my_comm.h"
-#include "xprintf.h"
+#include "logging.h"
 #include "task_tokens.h"
 #include "config_files.h"
 #include "ascii_helpers.h"
@@ -44,8 +44,6 @@ static const struct IP Log_IP_Cfg_File_Default = {
 /* configuration file */
 static const char *IP_Cfg_File = "LIP_CFG";
 
-static char * task_name = "logger_task";
-
 /**
  * @brief logger_task_init
  */
@@ -56,7 +54,7 @@ void logger_task_init(void)
 	register_magic(LOGGER_TASK_MAGIC);
 	i_am_alive(LOGGER_TASK_MAGIC);
 
-	messages_TaskInit_started(task_name);
+	messages_TaskInit_started();
 
 	ip_pair_t IP_params;
 	FRESULT res;
@@ -76,13 +74,12 @@ void logger_task_init(void)
 		if (pdiagsoc == NULL) {
 			loop("No avail. socket\n");
 		}
-		messages_TaskInit_OK(task_name);
-		xputs("Switching logging to UDP.\n");
+		messages_TaskInit_OK();
+		log_xputs(MSG_LEVEL_INFO, "Switching logging to UDP.\n");
 //		taskENTER_CRITICAL();
 
 //		taskEXIT_CRITICAL();
-		xputs(task_name);
-		xputs(" switched to UDP.\n");
+		log_xputs(MSG_LEVEL_INFO, " logging switched to UDP.\n");
 		i_am_alive(LOGGER_TASK_MAGIC);
 	} else {
 		init_log_ip_cfg();
@@ -104,9 +101,9 @@ void logger_task_run(void)
  */
 static void __attribute__((noreturn)) loop(char *msg)
 {
-	messages_TaskInit_fail(task_name);
+	messages_TaskInit_fail();
 
-	xputs(msg);
+	log_xputs(MSG_LEVEL_FATAL, msg);
 
 	for (;;) {
 		Transmit(NULL);
@@ -125,7 +122,7 @@ static void __attribute__((noreturn)) init_log_ip_cfg(void)
 	if (res != FR_OK) {
 		loop("Error saving log IP cfg file.\n");
 	}
-	xputs("Log IP cfg file saved.\n");
+	log_xputs(MSG_LEVEL_TASK_INIT, "Log IP cfg file saved.\n");
 	for (;;) {
 		Transmit(NULL);
 		vTaskDelay(pdMS_TO_TICKS(50U));

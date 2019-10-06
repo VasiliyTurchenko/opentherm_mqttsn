@@ -92,7 +92,7 @@
 
 #include "startup.h"
 #include "my_comm.h"
-#include "xprintf.h"
+#include "logging.h"
 #include "watchdog.h"
 
 /* USER CODE END Includes */
@@ -180,14 +180,15 @@ int main(void)
 	MX_TIM2_Init();
 	/* USER CODE BEGIN 2 */
 
+	log_set_mask_on(MSG_LEVEL_ALL);
 
 	if (AppStartUp() == ERROR) {
 		/* process error */
-		xputs("AppStartUp returned error!\n");
+		log_xputs(MSG_LEVEL_FATAL, "AppStartUp returned error!\n");
 	}
 	MX_IWDG_Init();
-	xputs("Indep. watchdog initialized.\n");
-	xputs("Starting RTOS...\n");
+	log_xputs(MSG_LEVEL_INFO, "Indep. watchdog initialized.\n");
+	log_xputs(MSG_LEVEL_INFO, "Starting RTOS...\n");
 
 	/* Call init function for freertos objects (in freertos.c) */
 	MX_FREERTOS_Init();
@@ -197,6 +198,8 @@ int main(void)
 	xfunc_out = myxfunc_out_RTOS; /* diagnostic print */
 
 	/* Start scheduler */
+	log_set_mask_off(MSG_LEVEL_INFO);
+	log_set_mask_off(MSG_LEVEL_EXT_INF);
 	osKernelStart();
 
 

@@ -18,7 +18,7 @@
 
 #include "config_files.h"
 
-#include "xprintf.h"
+#include "logging.h"
 #include "my_comm.h"
 #include "nvmem.h"
 #include "tiny-fs.h"
@@ -135,17 +135,17 @@ ErrorStatus AppStartUp(void)
 	/* set up periodic UART transmissions */
 	Transmit_non_RTOS = true;
 
-	xputs("\n\nStarting up...\n");
-	xputs(id);
-	xputs(buildNum_s);
-	xputs(buildDateTime);
+	log_xputs(MSG_LEVEL_INFO, "\n\nStarting up...\n");
+	log_xputs(MSG_LEVEL_INFO, id);
+	log_xputs(MSG_LEVEL_INFO, buildNum_s);
+	log_xputs(MSG_LEVEL_INFO, buildDateTime);
 
 	Cold_Boot(); /* Cold_Boot always goes first */
 
 	boot_flag = HW_Boot_Select();
 
 	if (boot_flag == COLD_BOOT) {
-		xputs("Cold boot selected.\n");
+		log_xputs(MSG_LEVEL_INFO, "Cold boot selected.\n");
 	}
 
 	/* check FRAM hardware */
@@ -154,55 +154,54 @@ ErrorStatus AppStartUp(void)
 	if ((res == FR_NO_FILESYSTEM) || (res == FR_NO_FILE) ||
 	    (boot_flag == COLD_BOOT)) {
 		/* we need to format media */
-		xputs(FRESULT_String(res));
-		xputs("\nNo filesystem! Formatting...\n");
+		log_xputs(MSG_LEVEL_INFO, FRESULT_String(res));
+		log_xputs(MSG_LEVEL_INFO, "\nNo filesystem! Formatting...\n");
 
 		/* check media */
 		if (Quick_FRAM_Test() != SUCCESS) {
-			xputs("FRAM test failed! Rebooting.\n");
+			log_xputs(MSG_LEVEL_FATAL, "FRAM test failed! Rebooting.\n");
 			reset_after_delay();
 		}
 		if (Format(&Media0) != SUCCESS) {
-			xputs("Media formatting failed! Rebooting.\n");
+			log_xputs(MSG_LEVEL_FATAL, "Media formatting failed! Rebooting.\n");
 			reset_after_delay();
 		}
 		/* create ip config file */
 		res = SaveIPCfg(&Media0);
 		if (res != FR_OK) {
-			xputs(FRESULT_String(res));
-			xputs(" SaveIPCfg() failed! Rebooting.\n");
+			log_xputs(MSG_LEVEL_FATAL, FRESULT_String(res));
+			log_xputs(MSG_LEVEL_FATAL, " SaveIPCfg() failed! Rebooting.\n");
 			reset_after_delay();
 		} else {
 			/* good reboot */
-			xputs("SaveIPCfg() successful! Rebooting.\n");
+			log_xputs(MSG_LEVEL_FATAL, "SaveIPCfg() successful! Rebooting.\n");
 			reset_after_delay();
 		}
 
 	} else if (res != FR_OK) {
-		xputs(FRESULT_String(res));
-		xputs("\nDisk error! Rebooting.\n");
+		log_xputs(MSG_LEVEL_FATAL, FRESULT_String(res));
+		log_xputs(MSG_LEVEL_FATAL, "\nDisk error! Rebooting.\n");
 		reset_after_delay();
 	} else {
-		xputs("Disk is OK.\n");
+		log_xputs(MSG_LEVEL_INFO, "Disk is OK.\n");
 	}
 
 	/* assume we have IP_CFG file */
 	if (Init_NIC(&Media0) != SUCCESS) {
 		/* reboot with defaults */
-		xputs("IP configuration error!\n");
+		log_xputs(MSG_LEVEL_SERIOUS, "IP configuration error!\n");
 		res = SaveIPCfg(&Media0);
 
-		xputs("Default IP configuration ");
 		if (res == FR_OK) {
-			xputs("saved.\n");
+			log_xputs(MSG_LEVEL_INFO, "Default IP configuration saved.\n");
 		} else {
-			xputs("error!\n");
+			log_xputs(MSG_LEVEL_FATAL, "Default IP configuration error!\n");
 		}
-		xputs("Rebooting\n");
+		log_xputs(MSG_LEVEL_FATAL, "Rebooting\n");
 		reset_after_delay();
 	}
 	/* ip configuration retrieved  */
-	xputs("IP configuration OK!\n");
+	log_xputs(MSG_LEVEL_INFO, "IP configuration OK!\n");
 	lan_init();
 	retVal = SUCCESS;
 

@@ -9,7 +9,7 @@
 
 #include "watchdog.h"
 #include "lan.h"
-#include "xprintf.h"
+#include "logging.h"
 #include "task_tokens.h"
 
 #include "config_files.h"
@@ -38,27 +38,24 @@ void mqtt_initialize(uint32_t task_magic,
 {
 	i_am_alive(task_magic);
 
-	messages_TaskInit_started(params_pool->long_taskName);
+	messages_TaskInit_started();
 
 	FRESULT res;
 	bool need_reboot = false;
 
 	res = ReadIPConfigFileNew(&Media0, ip_pool);
-	xputs(params_pool->short_taskName);
+	log_xputs(MSG_LEVEL_TASK_INIT, params_pool->short_taskName);
 
-	xputs(ip_string);
-	xputs(params_load);
+	log_xputs(MSG_LEVEL_TASK_INIT, ip_string);
 	if (res == FR_OK) {
-		xputs(params_loaded);
+		log_xputs(MSG_LEVEL_TASK_INIT, params_loaded);
 	} else {
-		xputs(params_not_loaded);
+		log_xputs(MSG_LEVEL_TASK_INIT, params_not_loaded);
 
 		res = DeleteFile(&Media0, ip_pool->file_name);
 		res = SaveIPConfigFileNew(&Media0, ip_pool);
 		if (res != FR_OK) {
-			xputs(error_saving);
-			xputs(params_pool->short_taskName);
-			xputs(cfg_file);
+			log_xputs(MSG_LEVEL_TASK_INIT, error_saving);
 		}
 		need_reboot = true;
 	}
@@ -71,13 +68,11 @@ void mqtt_initialize(uint32_t task_magic,
 	res = ReadBytes(&Media0,
 			(const char *)params_pool->MQTT_topic_filename,
 			0U, btr, &br, (uint8_t *)working_set);
-	xputs(params_pool->short_taskName);
-	xputs(topic_string);
-	xputs(params_load);
+	log_xputs(MSG_LEVEL_TASK_INIT, topic_string);
 	if ((res == FR_OK) && (btr == br)) {
-		xputs(params_loaded);
+		log_xputs(MSG_LEVEL_TASK_INIT, params_loaded);
 	} else {
-		xputs(params_not_loaded);
+		log_xputs(MSG_LEVEL_TASK_INIT, params_not_loaded);
 		br = 0U;
 		res = DeleteFile(
 			&Media0,
@@ -89,18 +84,16 @@ void mqtt_initialize(uint32_t task_magic,
 			(const uint8_t *)&params_pool->MQTT_topic_parameters);
 
 		if ((res != FR_OK) || (br != btr)) {
-			xputs(error_saving);
-			xputs(params_pool->short_taskName);
-			xputs(cfg_file);
+			log_xputs(MSG_LEVEL_TASK_INIT, error_saving);
 		}
 		need_reboot = true;
 	}
 
 	if (need_reboot) {
-		messages_TaskInit_fail(params_pool->long_taskName);
+		messages_TaskInit_fail();
 		vTaskDelay(pdMS_TO_TICKS(portMAX_DELAY));
 
 	} else {
-		messages_TaskInit_OK(params_pool->long_taskName);
+		messages_TaskInit_OK();
 	}
 }

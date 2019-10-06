@@ -7,7 +7,7 @@
  */
 
 #include "tim.h"
-#include "xprintf.h"
+#include "logging.h"
 #include "my_comm.h"
 #include "watchdog.h"
 #include "task_tokens.h"
@@ -74,8 +74,6 @@ static void resumeAll(void)
 }
 #endif
 
-static char *task_name = "manchester_task";
-
 /**
  * @brief manchester_task_init
  */
@@ -84,16 +82,16 @@ void manchester_task_init(void)
 	register_magic(MANCHESTER_TASK_MAGIC);
 
 
-	messages_TaskInit_started(task_name);
+	messages_TaskInit_started();
 
 	ErrorStatus res;
 	res = MANCHESTER_InitContext(&manchester_context, &htim2, startBits,
 				     stopBits, bitRate, bitOrder, startStopBit);
 	if (res == ERROR) {
-		messages_TaskInit_fail(task_name);
+		messages_TaskInit_fail();
 		vTaskDelay(pdMS_TO_TICKS(portMAX_DELAY));
 	} else {
-		messages_TaskInit_OK(task_name);
+		messages_TaskInit_OK();
 	}
 	return;
 }
@@ -122,8 +120,7 @@ void manchester_task_run(void)
 			result = MANCHESTER_Transmit(&manchester_Tx_data, &manchester_context);
 
 #if (MANCH_TASK_DEBUG_PRINT == 1)
-			xputs(task_name);
-			xputs(" TX>>\n");
+			log_xputs(MSG_LEVEL_INFO, " TX>>\n");
 #endif
 			xTaskNotify(TaskToNotify_afterTx, (uint32_t)result ,eSetValueWithOverwrite);
 
@@ -139,14 +136,12 @@ void manchester_task_run(void)
 
 		} else {
 #if (MANCH_TASK_DEBUG_PRINT == 1)
-			xputs(task_name);
-			xprintf(" bad notif. value %d\n", notif_val);
+			log_xprintf(MSG_LEVEL_PROC_ERR, " bad notif. value %d\n", notif_val);
 #endif
 		}
 	} else {
 #if (MANCH_TASK_DEBUG_PRINT == 1)
-		xputs(task_name);
-		xputs(" is idle\n");
+		log_xputs(MSG_LEVEL_INFO, " is idle\n");
 #endif
 	}
 }

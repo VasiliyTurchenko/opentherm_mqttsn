@@ -16,7 +16,7 @@
 #include "spi.h"
 #include "rtc.h"
 #include "rtc_magics.h"
-#include "xprintf.h"
+#include "logging.h"
 #include "debug_settings.h"
 
 #define	FRAM_SPI	hspi2

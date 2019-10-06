@@ -25,7 +25,7 @@
 
 #endif
 
-#include "xprintf.h"
+#include "logging.h"
 
 #include "lan.h"
 #include "tiny-fs.h"
@@ -75,8 +75,7 @@ static void TFTP_Write_File(const tftp_context_p context);
 
 void tftpd_init(ip_pair_t *ip_params)
 {
-	xputs("TFTP server init ");
-	char *err = "error.\n";
+	char *err = "TFTP server init error.";
 	if (ip_params != NULL) {
 		/* initialize context */
 		context1 = &tftp_context;
@@ -89,12 +88,12 @@ void tftpd_init(ip_pair_t *ip_params)
 				    SOC_MODE_READ);  /* mode */
 
 		if (context1->in_sock != NULL) {
-			xputs("OK.\n");
+			log_xputs(MSG_LEVEL_TASK_INIT, "TFTP server init OK.");
 		} else {
-			xputs(err);
+			log_xputs(MSG_LEVEL_TASK_INIT, err);
 		}
 	} else {
-		xputs(err);
+		log_xputs(MSG_LEVEL_TASK_INIT, err);
 	}
 
 #ifdef DEBUG
@@ -116,10 +115,10 @@ void tftpd_init(ip_pair_t *ip_params)
 void tftpd_run(void)
 {
 #ifdef TFTP_ERR_STATS
-//	xprintf("send errors: %d\n", send_err_errors);
+//	log_xprintf(MSG_LEVEL_INFO, "send errors: %d\n", send_err_errors);
 #endif
 #ifdef TFTP_DEBUG_PRINT
-	//	xputs("enter tftpd_run..\n");
+	//	log_xputs(MSG_LEVEL_EXT_INF, "enter tftpd_run..");
 	t0 = 0U;
 	t1 = 0U;
 #endif
@@ -184,7 +183,7 @@ void tftpd_run(void)
 		do {
 			TFTP_Block_Read(context1);
 #ifdef TFTP_DEBUG_PRINT
-			xprintf("bl rd:%d\n", context1->BlockNum);
+			log_xprintf(MSG_LEVEL_EXT_INF, "bl rd:%d\n", context1->BlockNum);
 
 #endif
 			if (context1->ErrCode != TFTP_ERROR_NOERROR) {
@@ -197,7 +196,7 @@ void tftpd_run(void)
 				goto fExit;
 			}
 #ifdef TFTP_DEBUG_PRINT
-			xputs("->S&S\n");
+			log_xputs(MSG_LEVEL_EXT_INF, "->S&S");
 #endif
 			TFTP_Serialize_and_Send(context1); /* send the packet */
 			if (context1->State == TFTP_STATE_ERR_ABORT) {
@@ -209,7 +208,7 @@ void tftpd_run(void)
 				goto fExit;
 			}
 #ifdef TFTP_DEBUG_PRINT
-			xputs("S&S->\n");
+			log_xputs(MSG_LEVEL_EXT_INF, "S&S->");
 #endif
 			/*waiting for ACK */
 			TFTP_Wait_for_Ack(context1);
@@ -236,7 +235,7 @@ void tftpd_run(void)
 		}
 /* receving frames */
 #ifdef TFTP_DEBUG_PRINT
-		xputs("data receiving started..\n");
+		log_xputs(MSG_LEVEL_EXT_INF, "data receiving started..");
 #endif
 		do {
 			TFTP_Rx_and_Deser(context1);
@@ -258,7 +257,7 @@ void tftpd_run(void)
 	TFTP_Check_for_Abort(context1); // hang the system if severe error!
 
 #ifdef TFTP_ERR_STATS
-	xprintf("send errors: %d\n", send_err_errors);
+	log_xprintf(MSG_LEVEL_INFO, "send errors: %d\n", send_err_errors);
 #endif
 fExit:
 	return;
@@ -325,7 +324,7 @@ static void TFTP_Rx_and_Deser(const tftp_context_p context)
 			temp_context = *context;
 			TFTP_Reply_ACK(&temp_context);
 #ifdef TFTP_DEBUG_PRINT
-			xprintf("reack block #%d\n", temp_context.BlockNum);
+			log_xprintf(MSG_LEVEL_INFO, "reack block #%d\n", temp_context.BlockNum);
 #endif
 			//			context->fstate = temp_context.fstate;
 			context->ErrCode = temp_context.ErrCode;
@@ -350,7 +349,7 @@ static void TFTP_Rx_and_Deser(const tftp_context_p context)
 static void TFTP_Write_File(const tftp_context_p context)
 {
 #ifdef TFTP_DEBUG_PRINT
-	xprintf("\n\tRx bl: %d len %d\n", context->BlockNum, context->DataLen);
+	log_xprintf(MSG_LEVEL_EXT_INF, "\n\tRx bl: %d len %d\n", context->BlockNum, context->DataLen);
 #endif
 	/* where to read the file data */
 	context->DataPtr =
@@ -420,7 +419,7 @@ static void TFTP_Wait_for_Ack(const tftp_context_p context)
 	uint8_t resends = 0u;
 #endif
 #ifdef TFTP_DEBUG_PRINT
-	xputs("->WFA\n");
+	log_xputs(MSG_LEVEL_EXT_INF, "->WFA");
 #endif
 	tftp_context_t temp_context;
 	temp_context =
@@ -463,8 +462,8 @@ static void TFTP_Wait_for_Ack(const tftp_context_p context)
 			context->State = TFTP_STATE_SENDING;
 #ifdef TFTP_DEBUG_PRINT
 			t1 = HAL_GetTick();
-			xprintf("got the ack =%d ", temp_context.BlockNum);
-			xprintf("dt= %d\n", (t1 - t0));
+			log_xprintf(MSG_LEVEL_EXT_INF, "got the ack =%d ", temp_context.BlockNum);
+			log_xprintf(MSG_LEVEL_EXT_INF, "dt= %d\n", (t1 - t0));
 #endif
 			goto fExit;
 		}
@@ -473,7 +472,7 @@ static void TFTP_Wait_for_Ack(const tftp_context_p context)
 		    (temp_context.OpCode == TFTP_ERR)) {
 /* reply with the ERR */
 #ifdef TFTP_DEBUG_PRINT
-			xputs("reply with err\n");
+			log_xputs(MSG_LEVEL_EXT_INF, "reply with err");
 #endif
 			TFTP_Serialize_and_Send(&temp_context);
 			*context = temp_context;
@@ -483,7 +482,7 @@ static void TFTP_Wait_for_Ack(const tftp_context_p context)
 /* resend last data packet*/
 #ifdef TFTP_DEBUG_PRINT
 		resends++;
-		xputs("resend\n");
+		log_xputs(MSG_LEVEL_EXT_INF, "resend");
 #endif
 		TFTP_Serialize_and_Send(context);
 		if (context->State == TFTP_STATE_ERR_ABORT) {
@@ -493,7 +492,7 @@ static void TFTP_Wait_for_Ack(const tftp_context_p context)
 
 fExit:
 #ifdef TFTP_DEBUG_PRINT
-	xputs("WFA->\n");
+	log_xputs(MSG_LEVEL_EXT_INF, "WFA->");
 #endif
 	return;
 }

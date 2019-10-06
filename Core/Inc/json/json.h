@@ -15,14 +15,14 @@
 #include "json_err.h"
 
 
-#define DEBUG	(0)	/* no debug */
-//#define DEBUG	(1)	/* debug and tests are enabled */
+#define JSON_DEBUG	(0)	/* no debug */
+//#define JSON_DEBUG	(1)	/* debug and tests are enabled */
 
-#if DEBUG == 1
+#if JSON_DEBUG == 1
 
 #define NDEBUG_STATIC
 
-#elif DEBUG == 0
+#elif JSON_DEBUG == 0
 
 #define NDEBUG_STATIC static inline
 
@@ -56,7 +56,7 @@ uint32_t serialize_json(uint8_t *pbuf, const size_t bufsize, json_obj_t *jsrc);
   */
 uint32_t deserialize_json(const uint8_t * pbuf, const size_t payload, json_obj_t *jdst);
 
-#if DEBUG == 1
+#if JSON_DEBUG == 1
 
 /** get_jstrlen returns the length of the valid json string which is between the quotation mark characters (U+0022).
   * @param ptr pointer to the start of the string, it points to the first symbol after leading quotation mark character (U+0022).

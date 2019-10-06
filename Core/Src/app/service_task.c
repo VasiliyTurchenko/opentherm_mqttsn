@@ -8,7 +8,7 @@
 
 #include "watchdog.h"
 #include "lan.h"
-#include "xprintf.h"
+#include "logging.h"
 #include "task_tokens.h"
 
 #include "config_files.h"
@@ -81,72 +81,66 @@ void service_task_init(void)
 
 	register_magic(SERVICE_TASK_MAGIC);
 	i_am_alive(SERVICE_TASK_MAGIC);
-	messages_TaskInit_started(task_name);
+	messages_TaskInit_started();
 
 	FRESULT res;
 	bool need_reboot = false;
 
 	res = ReadIPConfigFileNew(&Media0, &TFTP_cfg);
-	xputs("TFTP");
-	xputs(params_load);
+	log_xputs(MSG_LEVEL_TASK_INIT, "TFTP:");
 	if (res == FR_OK) {
-		xputs(params_loaded);
+		log_xputs(MSG_LEVEL_TASK_INIT, params_loaded);
 		tftpd_init(&TFTP_cfg.pair);
 	} else {
-		xputs(params_not_loaded);
+		log_xputs(MSG_LEVEL_TASK_INIT, params_not_loaded);
 
 		res = DeleteFile(&Media0, TFTP_cfg.file_name);
 		res = SaveIPConfigFileNew(&Media0, &TFTP_cfg);
 		if (res != FR_OK) {
-			xputs(error_saving);
-			xputs("TFTP");
-			xputs(cfg_file);
+			log_xputs(MSG_LEVEL_TASK_INIT, "TFTP:");
+			log_xputs(MSG_LEVEL_TASK_INIT, error_saving);
 		}
 		need_reboot = true;
 	}
 
 	res = ReadIPConfigFileNew(&Media0, &NTP1_cfg);
 
-	xputs("NTP1");
-	xputs(params_load);
+	log_xputs(MSG_LEVEL_TASK_INIT, "NTP1:");
 	if (res == FR_OK) {
-		xputs(params_loaded);
+		log_xputs(MSG_LEVEL_TASK_INIT, params_loaded);
 	} else {
-		xputs(params_not_loaded);
+		log_xputs(MSG_LEVEL_TASK_INIT, params_not_loaded);
 
 		res = DeleteFile(&Media0, NTP1_cfg.file_name);
 		res = SaveIPConfigFileNew(&Media0, &NTP1_cfg);
 		if (res != FR_OK) {
-			xputs(error_saving);
-			xputs("NTP1");
-			xputs(cfg_file);
+			log_xputs(MSG_LEVEL_TASK_INIT, "NTP1:");
+			log_xputs(MSG_LEVEL_TASK_INIT,error_saving);
 		}
 		need_reboot = true;
 	}
 	res = ReadIPConfigFileNew(&Media0, &NTP2_cfg);
 
-	xputs("NTP2");
-	xputs(params_load);
+	log_xputs(MSG_LEVEL_TASK_INIT, "NTP2:");
 	if (res == FR_OK) {
-		xputs(params_loaded);
+		log_xputs(MSG_LEVEL_TASK_INIT, params_loaded);
 	} else {
-		xputs(params_not_loaded);
+		log_xputs(MSG_LEVEL_TASK_INIT, params_not_loaded);
 
 		res = DeleteFile(&Media0, NTP2_cfg.file_name);
 		res = SaveIPConfigFileNew(&Media0, &NTP2_cfg);
 		if (res != FR_OK) {
-			xputs(error_saving);
-			xputs("NTP2");
-			xputs(cfg_file);
+			log_xputs(MSG_LEVEL_TASK_INIT, "NTP2");
+			log_xputs(MSG_LEVEL_TASK_INIT, error_saving);
 		}
 		need_reboot = true;
 	}
 
 	if (need_reboot) {
-		messages_TaskInit_fail(task_name);
+		messages_TaskInit_fail();
 		vTaskDelay(pdMS_TO_TICKS(portMAX_DELAY));
 	} else {
-		messages_TaskInit_OK(task_name);
+		messages_TaskInit_OK();
 	}
 }
 
@@ -163,11 +157,11 @@ void service_task_run(void)
 	HAL_GPIO_TogglePin(YELLOW_LED_GPIO_Port, YELLOW_LED_Pin);
 //	HAL_GPIO_TogglePin(ESP_RESET_GPIO_Port, ESP_RESET_Pin);
 	osDelay(500U);
-	xputs("ping-");
+	log_xputs(MSG_LEVEL_INFO, "ping-");
 	HAL_GPIO_TogglePin(YELLOW_LED_GPIO_Port, YELLOW_LED_Pin);
 //	HAL_GPIO_TogglePin(ESP_RESET_GPIO_Port, ESP_RESET_Pin);
 	osDelay(500U);
-	xputs("pong\n");
+	log_xputs(MSG_LEVEL_INFO, "-pong\n");
 
 	if ((xTaskGetTickCount() - xLastSyncTime) > xPeriod ) {
 		if ( (NTP_sync(NTP1_cfg.pair) == SUCCESS) ||
@@ -180,7 +174,7 @@ void service_task_run(void)
 
 		size_t n_entries = arp_get_capacity();
 		for(size_t i  = 0U; i < n_entries; i++) {
-			xputs(arp_get_entry_string(i));
+			log_xputs(MSG_LEVEL_INFO, arp_get_entry_string(i));
 		}
 	}
 

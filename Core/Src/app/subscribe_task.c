@@ -10,7 +10,7 @@
 
 #include "watchdog.h"
 #include "lan.h"
-#include "xprintf.h"
+#include "logging.h"
 #include "task_tokens.h"
 
 #include "config_files.h"
@@ -29,7 +29,7 @@
 
 extern const Media_Desc_t Media0;
 
-extern ldid_t OPENTHERM_GetNextMV_CMD(uint16_t *start_index);
+extern ldid_t OPENTHERM_GetNextMV_Controllable(uint16_t *start_index);
 
 //extern osThreadId SubscrbTaskHandle;
 
@@ -113,7 +113,7 @@ void subscribe_task_run(void)
 	while (mqtt_sn_init_context(&mqttsncontext02, &MQTT_sub_working_set,
 				    &MQS_IP_cfg) != SUCCESS) {
 #ifdef MQTT_SN_SUB_DEBUG_PRINT
-		xputs("initializing subscribe context...\n");
+		log_xputs(MSG_LEVEL_INFO, "initializing subscribe context...");
 #endif
 		mqtt_sn_deinit_context(&mqttsncontext02);
 		osDelay(200U);
@@ -123,7 +123,7 @@ void subscribe_task_run(void)
 	while (mqttsncontext02.state != CONNECTED) {
 		conn_attempts++; /* increment attempts counter */
 #ifdef MQTT_SN_SUB_DEBUG_PRINT
-		xprintf("subscribe connection attempt %d\n", conn_attempts);
+		log_xprintf(MSG_LEVEL_EXT_INF, "subscribe connection attempt %d\n", conn_attempts);
 #endif
 		if (mqtt_sn_connect(&mqttsncontext02) == SUCCESS) {
 			break;
@@ -138,14 +138,14 @@ void subscribe_task_run(void)
 	do {
 		/* request the LD to be subscribed */
 		ldid_t ld_id;
-		ld_id = OPENTHERM_GetNextMV_CMD(&mqttsncontext02.currPubSubMV);
+		ld_id = OPENTHERM_GetNextMV_Controllable(&mqttsncontext02.currPubSubMV);
 
 		if (mqttsncontext02.currPubSubMV == 0xFFFF) {
 			/* end of array reached */
 			break;
 		}
 #ifdef MQTT_SN_SUB_DEBUG_PRINT
-		xprintf("registering LDID:%d\n", nextLD);
+		log_xprintf(MSG_LEVEL_EXT_INF, "registering LDID:%d\n", nextLD);
 #endif
 		subresult = mqtt_sn_subscribe_topic(&mqttsncontext02,
 						   ld_id);
@@ -181,7 +181,7 @@ void subscribe_task_run(void)
 	deinitresult = mqtt_sn_deinit_context(&mqttsncontext02);
 	if (deinitresult == ERROR) {
 #ifdef MQTT_SN_SUB_DEBUG_PRINT
-		xputs("mqtt_sn_deinit_context(sub_context) error!\n");
+		log_xputs(MSG_LEVEL_FATAL, "mqtt_sn_deinit_context(sub_context) error!\n");
 #endif
 		/* need reboot */
 		for (;;) {
@@ -212,7 +212,7 @@ void subscribe_task_run(void)
 //	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
 //			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
 //		if (notif_val == (ErrorStatus)ERROR) {
-//			//			xputs("manch. rx ERR\n");
+
 //			goto fExit;
 
 //		} else {

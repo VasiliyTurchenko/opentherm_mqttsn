@@ -13,20 +13,20 @@
  extern "C" {
 #endif
 
-extern char *params_load;
+//extern char *params_load;
 extern char *params_loaded;
 extern char *params_not_loaded;
 
 extern char *error_saving;
-extern char *cfg_file;
+//extern char *cfg_file;
 
-void messages_Task_started(const char * msg);
+void messages_Task_started(void);
 
-void messages_TaskInit_started(const char * msg);
+void messages_TaskInit_started(void);
 
-void messages_TaskInit_OK(const char * msg);
+void messages_TaskInit_OK(void);
 
-void messages_TaskInit_fail(const char * msg);
+void messages_TaskInit_fail(void);
 
 #ifdef __cplusplus
  }

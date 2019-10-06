@@ -9,6 +9,7 @@
 #include "watchdog.h"
 #include "iwdg.h"
 #include "rtc.h"
+#include "logging.h"
 
 
 
@@ -36,7 +37,7 @@ void i_am_alive(const uint32_t magic)
 
 	if (magic_bits == 0U) {
 
-//		xputs("\n\n\nWDG reload\n\n\n");
+		log_xputs(MSG_LEVEL_EXT_INF, "IWDG reloaded.");
 
 		HAL_IWDG_Refresh(&hiwdg);		/* reload iwdt */
 		magic_bits = magic_mask;

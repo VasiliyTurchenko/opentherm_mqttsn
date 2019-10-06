@@ -15,7 +15,7 @@
 #include "mutex_helpers.h"
 
 #include "lan.h"
-#include "xprintf.h"
+#include "logging.h"
 #include "hex_gen.h"
 
 #define NET_BUF_STAT
@@ -85,6 +85,7 @@ static uint8_t *arp_resolve(uint32_t node_ip_addr);
 static uint8_t *arp_search_cache(uint32_t node_ip_addr);
 static void request_arp(uint32_t node_ip_addr);
 static int arp_get_cache_index(uint32_t node_ip_addr);
+static inline void arp_clear_cache(void);
 
 /* Ethernet level */
 static void eth_send(eth_frame_t *frame, uint16_t len);
@@ -1393,6 +1394,15 @@ char * arp_get_entry_string(size_t number)
 	return ptarget;
 }
 
+/**
+ * @brief arp_clear_cache
+ */
+static inline void arp_clear_cache(void)
+{
+	TAKE_MUTEX(ARP_MutexHandle);
+	memset(arp_cache, 0 ,sizeof (arp_cache));
+	GIVE_MUTEX(ARP_MutexHandle);
+}
 
 /** decrements time to live of the arp cache entry every 1s
   * invalidates the outdated entry
@@ -1924,6 +1934,9 @@ fExit:
 			while (1) {
 				/**/
 			}
+		} else {
+		/* try to reset ARP cache */
+			arp_clear_cache(); // + 05-Oct-2019
 		}
 	}
 	return result;

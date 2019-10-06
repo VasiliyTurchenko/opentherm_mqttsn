@@ -10,7 +10,7 @@
 
 #include "mqtt_sn.h"
 
-#include "xprintf.h"
+#include "logging.h"
 
 #include "hex_gen.h"
 
@@ -33,7 +33,7 @@ extern void DAQ_UpdateLD_callback(const uint16_t topicid, const ldid_t ldid,
 
 #define WORK_BUF_SIZE ((int)100)
 
-static const char * delim  = " : ";
+//static const char * delim  = " : ";
 
 static const MQTTSNPacket_connectData opt =
 	MQTTSNPacket_connectData_initializer;
@@ -123,10 +123,10 @@ ErrorStatus mqtt_sn_connect(MQTT_SN_Context_p pcontext)
 
 	retVal = write_socket(pcontext->outsoc, buf, len);
 	if (retVal == ERROR) {
-#if defined(MQTT_SN_PUB_DEBUG_PRINT) || defined(MQTT_SN_SUB_DEBUG_PRINT)
-		xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-		xputs(delim);
-		xputs("write_socket() during connection returned error\n");
+#if (MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR) ||                  \
+	(MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR)
+		log_xputs(MSG_LEVEL_PROC_ERR,
+			  "write_socket() during connection returned error\n");
 #endif
 		pcontext->state = IDLE;
 		goto fExit;
@@ -135,46 +135,34 @@ ErrorStatus mqtt_sn_connect(MQTT_SN_Context_p pcontext)
 	int MQTTSNPacket_read_result = MQTTSNPACKET_READ_ERROR;
 	const uint32_t connectTimeoutMS = 1000U;
 
-#if (LAN_NOTIFICATION != 1)
-	const TickType_t timeout = pdMS_TO_TICKS(connectTimeoutMS);
-	TickType_t entree_time = xTaskGetTickCount();
-
-	do {
-		MQTTSNPacket_read_result = MQTTSNPacket_read(
-			pcontext->insoc, buf, buflen, &read_socket_nowait);
-		if (MQTTSNPacket_read_result != MQTTSNPACKET_READ_ERROR) {
-			break;
-		}
-		taskYIELD();
-	} while (xTaskGetTickCount() < (entree_time + timeout));
-#else
 	set_notif_params(pcontext->insoc,
-			xTaskGetCurrentTaskHandle(), /* current task handle */
-			connectTimeoutMS);
-	MQTTSNPacket_read_result = MQTTSNPacket_read(
-			pcontext->insoc,
-			buf,
-			buflen,
-			&read_socket_nowait);	/* use notif. */
-#endif
+			 xTaskGetCurrentTaskHandle(), /* current task handle */
+			 connectTimeoutMS);
+	MQTTSNPacket_read_result =
+		MQTTSNPacket_read(pcontext->insoc, buf, buflen,
+				  &read_socket_nowait); /* use notif. */
 
 	if (MQTTSNPacket_read_result == MQTTSN_CONNACK) {
 		int connack_rc = -1;
 		if ((MQTTSNDeserialize_connack(&connack_rc, buf, buflen) !=
-		     1) || connack_rc != 0) {
-#if defined(MQTT_SN_PUB_DEBUG_PRINT) || defined(MQTT_SN_SUB_DEBUG_PRINT)
-			xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-			xputs(delim);
-			xprintf("unable to connect, retcode %d\n", connack_rc);
+		     1) ||
+		    connack_rc != 0) {
+#if (MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR) ||                  \
+	(MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR)
+			log_xprintf(MSG_LEVEL_PROC_ERR,
+				    "unable to connect, retcode %d\n",
+				    connack_rc);
 #endif
 			retVal = ERROR;
 			pcontext->state = IDLE;
 			goto fExit;
 		} else {
-#if defined(MQTT_SN_PUB_DEBUG_PRINT) || defined(MQTT_SN_SUB_DEBUG_PRINT)
-			xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-			xputs(delim);
-			xprintf("connected with retcode %d\n", connack_rc);
+#if (MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL) ||                  \
+	(MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL)
+			log_xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
+			log_xputs(delim);
+			log_xprintf(MSG_LEVEL_INFO,
+				    "connected with retcode %d\n", connack_rc);
 #endif
 			retVal = SUCCESS;
 			pcontext->state = CONNECTED;
@@ -182,12 +170,11 @@ ErrorStatus mqtt_sn_connect(MQTT_SN_Context_p pcontext)
 	} else { /* MQTTSN_CONNACK isn't received */
 		retVal = ERROR;
 		pcontext->state = IDLE;
-#if defined(MQTT_SN_PUB_DEBUG_PRINT) || defined(MQTT_SN_SUB_DEBUG_PRINT)
-		xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-		xputs(delim);
-		xputs("MQTTSN_CONNACK isn't received for ");
-		xprintf(pcontext->Root_Topic);
-		xputc('\n');
+#if (MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR) ||                  \
+	(MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR)
+		log_xputs(MSG_LEVEL_PROC_ERR,
+			  "MQTTSN_CONNACK isn't received for ");
+		log_xputs(MSG_LEVEL_PROC_ERR, pcontext->Root_Topic);
 #endif
 	}
 fExit:
@@ -206,10 +193,8 @@ ErrorStatus mqtt_sn_register_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 	ErrorStatus retVal = ERROR;
 
 	if (pcontext->state != CONNECTED) {
-#if defined(MQTT_SN_PUB_DEBUG_PRINT)
-		xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-		xputs(delim);
-		xprintf("not connected, can't register \n");
+#if (MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR)
+		log_xputs(MSG_LEVEL_PROC_ERR, "not connected, can't register.");
 #endif
 		goto fExit;
 	}
@@ -223,18 +208,16 @@ ErrorStatus mqtt_sn_register_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 	MQTTSNString topicstr;
 	uint16_t topicid;
 
-#if defined(MQTT_SN_PUB_DEBUG_PRINT)
-//	xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-//	xputs(delim);
-
-	/* xprintf("Registering\n"); */
+#if (MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL)
+	log_xputs(MSG_LEVEL_EXT_INF, "Registering");
+	* /
 #endif
-	/* compose topicname */
-	char tmptopicstr[MAX_TOPICSTR_LEN];
+		/* compose topicname */
+		char tmptopicstr[MAX_TOPICSTR_LEN];
 	strncpy(tmptopicstr, pcontext->Root_Topic, (MAX_TOPICSTR_LEN - 1U));
 
 	//	"LD_ID:00000"
-	char entity[] = { TOPIC_TEXT };    /* template */
+	char entity[] = { TOPIC_TEXT };     /* template */
 	uint16_to_asciiz(ldid, &entity[6]); /* convert ldid to text*/
 	strncat(tmptopicstr, entity, strlen(entity));
 
@@ -254,28 +237,12 @@ ErrorStatus mqtt_sn_register_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 	int MQTTSNPacket_read_result = MQTTSNPACKET_READ_ERROR;
 	const uint32_t registerTimeoutMS = 1000U;
 
-#if (LAN_NOTIFICATION != 1)
-	const TickType_t timeout = pdMS_TO_TICKS(registerTimeoutMS);
-	TickType_t entree_time = xTaskGetTickCount();
-	do {
-		MQTTSNPacket_read_result = MQTTSNPacket_read(
-			pcontext->insoc, buf, buflen, &read_socket_nowait);
-		if (MQTTSNPacket_read_result != MQTTSNPACKET_READ_ERROR) {
-			break;
-		}
-		taskYIELD();
-	} while (xTaskGetTickCount() < (entree_time + timeout));
-#else
 	set_notif_params(pcontext->insoc,
-			xTaskGetCurrentTaskHandle(), /* current task handle */
-			registerTimeoutMS);
+			 xTaskGetCurrentTaskHandle(), /* current task handle */
+			 registerTimeoutMS);
 
 	MQTTSNPacket_read_result = MQTTSNPacket_read(
-						pcontext->insoc,
-						buf,
-						buflen,
-						&read_socket_nowait); /* */
-#endif
+		pcontext->insoc, buf, buflen, &read_socket_nowait); /* */
 
 	if (MQTTSNPacket_read_result == MQTTSN_REGACK) {
 		uint16_t submsgid;
@@ -283,18 +250,15 @@ ErrorStatus mqtt_sn_register_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 		rc = MQTTSNDeserialize_regack(&topicid, &submsgid, &returncode,
 					      buf, buflen);
 		if (returncode != 0) {
-#if defined(MQTT_SN_PUB_DEBUG_PRINT)
-		xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-		xputs(delim);
-		xprintf("retcode %d\n", returncode);
+#if (MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR)
+			log_xprintf(MSG_LEVEL_PROC_ERR, "retcode %d",
+				    returncode);
 #endif
 			retVal = ERROR;
 			goto fExit;
 		} else {
-#if defined(MQTT_SN_PUB_DEBUG_PRINT)
-//		xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-//		xputs(delim);
-	/*	xprintf("regack topic id %d\n", topicid); */
+#if (MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR)
+			/*	log_xprintf(MSG_LEVEL_EXT_INF, "regack topic id %d\n", topicid); */
 #endif
 			DAQ_UpdateLD_callback(topicid, ldid, Pub);
 			retVal = SUCCESS;
@@ -320,10 +284,9 @@ ErrorStatus mqtt_sn_publish_topic(MQTT_SN_Context_p pcontext, uint16_t topicid,
 	ErrorStatus retVal = ERROR;
 
 	if (pcontext->state != CONNECTED) {
-#if defined(MQTT_SN_PUB_DEBUG_PRINT)
-		xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-		xputs(delim);
-		xprintf("not connected, unable to publish\n");
+#if (MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR)
+		log_xputs(MSG_LEVEL_PROC_ERR,
+			  "not connected, unable to publish");
 #endif
 		goto fExit;
 	}
@@ -353,59 +316,45 @@ ErrorStatus mqtt_sn_publish_topic(MQTT_SN_Context_p pcontext, uint16_t topicid,
 	retVal = write_socket(pcontext->outsoc, buf, len);
 
 	rc = MQTTSNPACKET_READ_ERROR;
-	const uint32_t pubAckTimeOutMS = 700U;
+	const uint32_t pubAckTimeOutMS = 1000U;
 
-#if (LAN_NOTIFICATION != 1)
-	TickType_t timeout = pdMS_TO_TICKS(pubAckTimeOutMS);
-	TickType_t entree_time = xTaskGetTickCount();
-
-	do {
-		rc = MQTTSNPacket_read(pcontext->insoc, buf, buflen,
-				       &read_socket_nowait);
-		if (rc != MQTTSNPACKET_READ_ERROR) {
-			break;
-		}
-		taskYIELD();
-	} while (xTaskGetTickCount() < (entree_time + timeout));
-#else
 	set_notif_params(pcontext->insoc,
-			xTaskGetCurrentTaskHandle(), /* current task handle */
-			pubAckTimeOutMS);
+			 xTaskGetCurrentTaskHandle(), /* current task handle */
+			 pubAckTimeOutMS);
 
-	rc = MQTTSNPacket_read(pcontext->insoc,
-				 buf,
-				 buflen,
-				 &read_socket_nowait); /* */
-#endif
+	rc = MQTTSNPacket_read(pcontext->insoc, buf, buflen,
+			       &read_socket_nowait); /* */
 
 	if (rc == MQTTSN_PUBACK) {
 		retVal = SUCCESS;
 	} else {
 		retVal = ERROR; /* need DISCONNECTING !!!*/
-#if defined(MQTT_SN_PUB_DEBUG_PRINT)
-		xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-		xputs(delim);
-		xprintf("no PUBACK received, reconnecting\n");
+#if (MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR)
+		log_xputs(MSG_LEVEL_PROC_ERR,
+			  "no PUBACK received, reconnecting");
 #endif
 	}
-	{
-#if defined(MQTT_SN_PUB_DEBUG_PRINT)
-		uint16_t packet_id, topic_id;
-		uint8_t returncode;
 
-		if (MQTTSNDeserialize_puback(&topic_id, &packet_id, &returncode,
-					     buf, buflen) != 1 ||
-		    returncode != MQTTSN_RC_ACCEPTED) {
-			xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-			xputs(delim);
-			xprintf("unable to publish, retcode %d\n", returncode);
-		} else {
-			xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-			xputs(delim);
-			/* xprintf("puback received, id %d\n", packet_id) */
+	uint16_t packet_id, topic_id;
+	uint8_t returncode;
+	int des_result = MQTTSNDeserialize_puback(&topic_id,
+				     &packet_id,
+				     &returncode,
+				     buf,
+				     buflen);
 
-		}
+	if ( (des_result != 1) || (returncode != MQTTSN_RC_ACCEPTED) ) {
+#if (MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR)
+		log_xprintf(MSG_LEVEL_PROC_ERR, "unable to publish, retcode %d",
+			    returncode);
 #endif
+	} else {
+#if (MQTT_SN_PUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL)
+		log_xprintf(MSG_LEVEL_INFO, "puback received, id %d\n",
+			    packet_id) *
+			/
+#endif
+
 		/**/
 	}
 fExit:
@@ -446,10 +395,8 @@ ErrorStatus mqtt_sn_subscribe_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 	ErrorStatus retVal = ERROR;
 
 	if (pcontext->state != CONNECTED) {
-#if defined(MQTT_SN_SUB_DEBUG_PRINT)
-		xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-		xputs(delim);
-		xprintf("Not connected, can't subscibe\n");
+#if (MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR)
+		log_xputs(MSG_LEVEL_PROC_ERR, "Not connected, can't subscibe");
 #endif
 		goto fExit;
 	}
@@ -458,10 +405,8 @@ ErrorStatus mqtt_sn_subscribe_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 	int len = 0;
 	int rc = 0;
 
-#if defined(MQTT_SN_SUB_DEBUG_PRINT)
-		xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-		xputs(delim);
-		xprintf("subscribing...\n");
+#if (MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL)
+	log_xputs(MSG_LEVEL_EXT_INF, "subscribing...\n");
 #endif
 	MQTTSN_topicid topic;
 	topic.type = MQTTSN_TOPIC_TYPE_NORMAL;
@@ -472,17 +417,14 @@ ErrorStatus mqtt_sn_subscribe_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 	strncpy(tmptopicstr, pcontext->Root_Topic, (MAX_TOPICSTR_LEN - 1U));
 
 	//	"CMD:00000"
-	char entity[] = { TOPIC_CMD };     /* template */
+	char entity[] = { TOPIC_CMD };      /* template */
 	uint16_to_asciiz(ldid, &entity[4]); /* convert ldid to text*/
 	strncat(tmptopicstr, entity, strlen(entity));
 
 	uint16_t packetid = 1U;
 	topic.data.long_.name = tmptopicstr;
-#if defined(MQTT_SN_SUB_DEBUG_PRINT)
-	xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-	xputs(delim);
-	xputs(tmptopicstr);
-	xputc('\n');
+#if (MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL)
+	log_xputs(MSG_LEVEL_EXT_INF, tmptopicstr);
 #endif
 	topic.data.long_.len = (int)strlen(topic.data.long_.name);
 	len = MQTTSNSerialize_subscribe(buf, buflen, 0, 2, packetid, &topic);
@@ -494,27 +436,11 @@ ErrorStatus mqtt_sn_subscribe_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 	const uint32_t subAckTimeoutMS = 1000U;
 	int MQTTSNPacket_read_result = MQTTSNPACKET_READ_ERROR;
 
-#if (LAN_NOTIFICATION != 1)
-	TickType_t timeout = pdMS_TO_TICKS(pubAckTimeoutMS);
-	TickType_t entree_time = xTaskGetTickCount();
-	do {
-		MQTTSNPacket_read_result = MQTTSNPacket_read(
-			pcontext->insoc, buf, buflen, &read_socket_nowait);
-		if (MQTTSNPacket_read_result != MQTTSNPACKET_READ_ERROR) {
-			break;
-		}
-		taskYIELD();
-	} while (xTaskGetTickCount() < (entree_time  + timeout));
-#else
 	set_notif_params(pcontext->insoc,
-			xTaskGetCurrentTaskHandle(), /* current task handle */
-			subAckTimeoutMS);
+			 xTaskGetCurrentTaskHandle(), /* current task handle */
+			 subAckTimeoutMS);
 	MQTTSNPacket_read_result = MQTTSNPacket_read(
-						pcontext->insoc,
-						buf,
-						buflen,
-						&read_socket_nowait); /* */
-#endif
+		pcontext->insoc, buf, buflen, &read_socket_nowait); /* */
 
 	if (MQTTSNPacket_read_result == MQTTSN_SUBACK) {
 		unsigned short submsgid;
@@ -530,29 +456,24 @@ ErrorStatus mqtt_sn_subscribe_topic(MQTT_SN_Context_p pcontext, ldid_t ldid)
 		retVal = SUCCESS;
 
 		if (granted_qos != 2 || returncode != 0) {
-#if defined(MQTT_SN_SUB_DEBUG_PRINT)
-			xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-			xputs(delim);
-			xprintf("granted qos != 2, %d retcode %d\n",
-				granted_qos, returncode);
+#if (MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR)
+			log_xprintf(MSG_LEVEL_PROC_ERR,
+				    "granted qos != 2, %d retcode %d\n",
+				    granted_qos, returncode);
 #endif
 			/*  comment  */
 		} else {
-#if defined(MQTT_SN_SUB_DEBUG_PRINT)
-			xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-			xputs(delim);
-			xprintf("SUBACK topic id %d\n", topicid);
+#if (MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL)
+			log_xprintf(MSG_LEVEL_EXT_INF, "SUBACK topic id %d\n",
+				    topicid);
 #endif
 			/*  comment  */
 		}
 	} else {
 		retVal = ERROR;
-#if defined(MQTT_SN_SUB_DEBUG_PRINT)
-		xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-		xputs(delim);
-		xputs("No SUBACK received for: ");
-		xprintf(tmptopicstr);
-		xputs("\n");
+#if (MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR)
+		log_xprintf(MSG_LEVEL_PROC_ERR, "No SUBACK received for: %s",
+			    tmptopicstr);
 #endif
 	}
 fExit:
@@ -578,8 +499,8 @@ ErrorStatus mqtt_sn_poll_subscribed(MQTT_SN_Context_p pcontext)
 	rcvd = MQTTSNPacket_read(pcontext->insoc, buf, buflen,
 				 &read_socket_nowait);
 	if (rcvd == MQTTSN_PUBLISH) {
-		pcontext->time_OK =
-			xTaskGetTickCount(); /* save the time when MQTTSN_PUBLISH was received */
+		/* save the time when MQTTSN_PUBLISH was received */
+		pcontext->time_OK = xTaskGetTickCount();
 
 		uint16_t packet_id;
 		int32_t qos;
@@ -591,56 +512,55 @@ ErrorStatus mqtt_sn_poll_subscribed(MQTT_SN_Context_p pcontext)
 		if (MQTTSNDeserialize_publish(&dup, &qos, &retained, &packet_id,
 					      &pubtopic, &payload, &payloadlen,
 					      buf, buflen) != 1) {
-#if defined(MQTT_SN_SUB_DEBUG_PRINT)
-			xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-			xputs(delim);
-			xputs("Error deserializing published data\n");
+#if (MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ERR)
+			log_xputs(MSG_LEVEL_PROC_ERR,
+				  "Error deserializing published data\n");
 #endif
 			goto fExit;
 		} else { /* all ok, received correct data */
-#if defined(MQTT_SN_SUB_DEBUG_PRINT)
-			xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-			xputs(delim);
-			xprintf("publish received, id %d qos %d ->>", packet_id,
-				qos);
-			xprintf("%d\n", pcontext->time_OK);
+#if (MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL)
+			log_xprintf(MSG_LEVEL_EXT_INF,
+				    "publish received, id %d qos %d ->>",
+				    packet_id, qos);
+			log_xprintf(MSG_LEVEL_EXT_INF, "%d\n",
+				    pcontext->time_OK);
 
 #endif
 			/* proceed topic */
-			uint8_t *pl;
-			pl = payload;
+#if (MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL)
+			uint8_t *pl = payload;
 			while (payloadlen > 0) {
 				xputc(*pl);
 				pl++;
 				payloadlen--;
 			}
-#if defined(MQTT_SN_SUB_DEBUG_PRINT)
-			xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-			xputs(delim);
-			xputc('\t');
-			xprintf("topicid from payload:%d\t", pubtopic.data.id);
+#endif
+
+#if (MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL)
+			log_xprintf(MSG_LEVEL_EXT_INF,
+				    "topicid from payload:%d\t",
+				    pubtopic.data.id);
 #endif
 			/* dispatch topic */
 			/* check if the packet_id is from the past */
-			if ( (packet_id > pcontext->last_procd_packet_id) ||
-			     ((packet_id < 0x8000U) &&
-			     (pcontext->last_procd_packet_id > 0x8000U)) ) {
-			      /* normally sequenced packet id */
-/*
+			if ((packet_id > pcontext->last_procd_packet_id) ||
+			    ((packet_id < 0x8000U) &&
+			     (pcontext->last_procd_packet_id > 0x8000U))) {
+				/* normally sequenced packet id */
+				extern ErrorStatus
+				DAQ_Dispatch(const uint8_t *payload,
+					       MQTTSN_topicid topicid /*,
+					       uint16_t packetid */);
 
-{"CMD":"00004", {"Val":"off"}"
-
-*/
-				//				DAQ_Dispatch(payload, pubtopic, packet_id);
+				DAQ_Dispatch(payload, pubtopic /*, packet_id*/);
 
 				pcontext->last_procd_packet_id = packet_id;
 				/* end of proceed topic */
 			} else {
-#if defined(MQTT_SN_SUB_DEBUG_PRINT)
-				xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-				xputs(delim);
-				xprintf("\npacketid %d is from the past!\n",
-					packet_id);
+#if (MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL)
+				log_xprintf(MSG_LEVEL_PROC_ERR,
+					    "\npacketid %d is from the past!\n",
+					    packet_id);
 #endif
 			}
 			retVal = SUCCESS;
@@ -649,15 +569,14 @@ ErrorStatus mqtt_sn_poll_subscribed(MQTT_SN_Context_p pcontext)
 				len = MQTTSNSerialize_puback(
 					buf, buflen, pubtopic.data.id,
 					packet_id, MQTTSN_RC_ACCEPTED);
+
 				pubackresult = write_socket(pcontext->outsoc,
 							    buf, len);
 				if (pubackresult == SUCCESS) {
-#if defined(MQTT_SN_SUB_DEBUG_PRINT)
-					xputs(pcTaskGetName(xTaskGetCurrentTaskHandle()));
-					xputs(delim);
-					xputs("PUBACK sent\n");
+#if (MQTT_SN_SUB_DEBUG_PRINT <= DEBUG_PRINT_ERR_LEVEL_ALL)
+					log_xputs(MSG_LEVEL_EXT_INF,
+						  "PUBACK sent\n");
 #endif
-					/**/
 				}
 			}
 		} /* of all ok, received correct data */
@@ -674,4 +593,3 @@ fExit:
 }
 
 /* ######################### EOF ################################################################ */
-
