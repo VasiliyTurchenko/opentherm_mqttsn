@@ -61,8 +61,10 @@
 #include "manchester_task.h"
 #include "logger_task.h"
 #include "service_task.h"
+#ifdef MASTERBOARD
 #include "publish_task.h"
 #include "subscribe_task.h"
+#endif
 #include "opentherm_task.h"
 
 #include "string.h"
@@ -104,10 +106,16 @@ osStaticMutexDef_t xfunc_outMutex_ControlBlock __attribute__((section (".ccmram"
 
 #ifdef DEBUG
 static volatile size_t LANPollTaskBuffer_depth;
+#ifdef MASTERBOARD
 static volatile size_t PublishTaskBuffer_depth;
+
+#endif
 static volatile size_t DiagPrintTaskBuffer_depth;
-static volatile size_t ProcSPSTaskBuffer_depth;
+
+#ifdef MASTERBOARD
 static volatile size_t SubscribeTaskBuffer_depth;
+#endif
+
 static volatile size_t ServiceTaskBuffer_depth;
 static volatile size_t ManchTaskBuffer_depth;
 static volatile size_t OpenThermTaskBuffer_depth;
@@ -118,24 +126,30 @@ static volatile size_t OpenThermTaskBuffer_depth;
 osThreadId LANPollTaskHandle __attribute__((section (".ccmram")));
 uint32_t LANPollTaskBuffer[128] /*__attribute__((section (".ccmram"))) */;
 osStaticThreadDef_t LANPollTaskControlBlock __attribute__((section (".ccmram")));
+
+#ifdef MASTERBOARD
 osThreadId PublishTaskHandle __attribute__((section (".ccmram")));
 uint32_t PublishTaskBuffer[256] /* __attribute__((section (".ccmram"))) */;
 osStaticThreadDef_t PublishTaskControlBlock __attribute__((section (".ccmram")));
+#endif
+
 osThreadId DiagPrTaskHandle  __attribute__((section (".ccmram")));
 uint32_t DiagPrintTaskBuffer[200] /* __attribute__((section (".ccmram"))) */;
 osStaticThreadDef_t DiagPrintTaskControlBlock __attribute__((section (".ccmram")));
-osThreadId ProcSPSTaskHandle __attribute__((section (".ccmram")));
-uint32_t ProcSPSTaskBuffer[128] /* __attribute__((section (".ccmram"))) */;
-osStaticThreadDef_t ProcSPSTaskControlBlock __attribute__((section (".ccmram")));
+
+#ifdef MASTERBOARD
 osThreadId SubscrbTaskHandle __attribute__((section (".ccmram")));
 uint32_t SubscribeTaskBuffer[256] /* __attribute__((section (".ccmram"))) */;
 osStaticThreadDef_t SubscribeTaskControlBlock __attribute__((section (".ccmram")));
+#endif
 osThreadId ServiceTaskHandle __attribute__((section (".ccmram")));
 uint32_t ServiceTaskBuffer[168] /* __attribute__((section (".ccmram"))) */;
 osStaticThreadDef_t ServiceTaskControlBlock __attribute__((section (".ccmram")));
+
 osThreadId ManchTaskHandle __attribute__((section (".ccmram")));
 uint32_t ManchTaskBuffer[128] /* __attribute__((section (".ccmram"))) */;
 osStaticThreadDef_t ManchTaskControlBlock __attribute__((section (".ccmram")));
+
 osMutexId ETH_Mutex01Handle __attribute__((section (".ccmram")));
 osStaticMutexDef_t ETH_Mutex01_ControlBlock __attribute__((section (".ccmram")));
 
@@ -151,10 +165,13 @@ osStaticThreadDef_t OpenThermTaskControlBlock __attribute__((section (".ccmram")
 /* USER CODE END FunctionPrototypes */
 
 void __attribute__ ((noreturn)) Start_LANPollTask(void const *argument);
+#ifdef MASTERBOARD
 void __attribute__ ((noreturn)) Start_PublishTask(void const *argument);
+#endif
 void __attribute__ ((noreturn)) Start_DiagPrintTask(void const *argument);
-void __attribute__ ((noreturn)) Start_ProcSPSTask(void const *argument);
+#ifdef MASTERBOARD
 void __attribute__ ((noreturn)) Start_SubscribeTask(void const *argument);
+#endif
 void __attribute__ ((noreturn)) Start_ServiceTask(void const *argument);
 void __attribute__ ((noreturn)) Start_ManchTask(void const *argument);
 
@@ -212,14 +229,6 @@ __weak void vApplicationIdleHook(void)
 		i++;
 	}
 	DiagPrintTaskBuffer_depth = i;
-
-	p = ProcSPSTaskBuffer;
-	i = 0U;
-	while ((i < 128U) && (*p == STACK_FILLER)) {
-		p++;
-		i++;
-	}
-	ProcSPSTaskBuffer_depth = i;
 
 	p = SubscribeTaskBuffer;
 	i = 0U;
@@ -329,10 +338,12 @@ void MX_FREERTOS_Init(void)
 			  128, LANPollTaskBuffer, &LANPollTaskControlBlock);
 	LANPollTaskHandle = osThreadCreate(osThread(LANPollTask), NULL);
 
+#ifdef MASTERBOARD
 	/* definition and creation of PublishTask */
 	osThreadStaticDef(PublishTask, Start_PublishTask, osPriorityNormal, 0,
 			  256, PublishTaskBuffer, &PublishTaskControlBlock);
 	PublishTaskHandle = osThreadCreate(osThread(PublishTask), NULL);
+#endif
 
 	/* definition and creation of DiagPrTask */
 	osThreadStaticDef(DiagPrTask, Start_DiagPrintTask,
@@ -340,15 +351,12 @@ void MX_FREERTOS_Init(void)
 			  &DiagPrintTaskControlBlock);
 	DiagPrTaskHandle = osThreadCreate(osThread(DiagPrTask), NULL);
 
-	/* definition and creation of ProcSPSTask */
-	osThreadStaticDef(ProcSPSTask, Start_ProcSPSTask, osPriorityHigh, 0,
-			  128, ProcSPSTaskBuffer, &ProcSPSTaskControlBlock);
-	ProcSPSTaskHandle = osThreadCreate(osThread(ProcSPSTask), NULL);
-
+#ifdef MASTERBOARD
 	/* definition and creation of SubscrbTask */
 	osThreadStaticDef(SubscrbTask, Start_SubscribeTask, osPriorityNormal, 0,
 			  256, SubscribeTaskBuffer, &SubscribeTaskControlBlock);
 	SubscrbTaskHandle = osThreadCreate(osThread(SubscrbTask), NULL);
+#endif
 
 	/* definition and creation of ServiceTask */
 	osThreadStaticDef(ServiceTask, Start_ServiceTask, osPriorityNormal, 0,
@@ -400,14 +408,6 @@ void MX_FREERTOS_Init(void)
 		i--;
 	}
 
-	p = ProcSPSTaskBuffer;
-	i = 120U;
-	while (i > 0U) {
-		*p = STACK_FILLER;
-		p++;
-		i--;
-	}
-
 	p = SubscribeTaskBuffer;
 	i = 248U;
 	while (i > 0U) {
@@ -442,16 +442,13 @@ void MX_FREERTOS_Init(void)
 	/* USER CODE END RTOS_QUEUES */
 }
 
-/* USER CODE BEGIN Header_Start_LANPollTask */
 /**
   * @brief  Function implementing the LANPollTask thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_Start_LANPollTask */
 void __attribute__ ((noreturn)) Start_LANPollTask(void const *argument)
 {
-	/* USER CODE BEGIN StartLAN_Poll_Task */
 	(void)argument;
 	const TickType_t xPeriod = pdMS_TO_TICKS(2U);
 	lan_poll_task_init();
@@ -460,19 +457,16 @@ void __attribute__ ((noreturn)) Start_LANPollTask(void const *argument)
 		lan_poll_task_run();
 		vTaskDelay(xPeriod);
 	}
-	/* USER CODE END StartLAN_Poll_Task */
 }
 
-/* USER CODE BEGIN Header_Start_PublishTask */
 /**
 * @brief Function implementing the PublishTask thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_Start_PublishTask */
+#ifdef MASTERBOARD
 void __attribute__ ((noreturn)) Start_PublishTask(void const *argument)
 {
-	/* USER CODE BEGIN Start_PublishTask */
 	(void)argument;
 
 	while (!opentherm_configured) {
@@ -484,19 +478,16 @@ void __attribute__ ((noreturn)) Start_PublishTask(void const *argument)
 	for (;;) {
 		publish_task_run();
 	}
-	/* USER CODE END Start_PublishTask */
 }
+#endif
 
-/* USER CODE BEGIN Header_Start_DiagPrintTask */
 /**
 * @brief Function implementing the DiagPrTask thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_Start_DiagPrintTask */
 void __attribute__ ((noreturn)) Start_DiagPrintTask(void const *argument)
 {
-	/* USER CODE BEGIN Start_DiagPrintTask */
 	(void)argument;
 	logger_task_init();
 	TickType_t xLastWakeTime;
@@ -509,58 +500,33 @@ void __attribute__ ((noreturn)) Start_DiagPrintTask(void const *argument)
 		logger_task_run();
 		vTaskDelayUntil(&xLastWakeTime, xPeriod);	/* wake up every 3ms */
 	}
-	/* USER CODE END Start_DiagPrintTask */
 }
 
-/* USER CODE BEGIN Header_Start_ProcSPSTask */
-/**
-* @brief Function implementing the ProcSPSTask thread.
-* @param argument: Not used
-* @retval None
-*/
-/* USER CODE END Header_Start_ProcSPSTask */
-void __attribute__ ((noreturn)) Start_ProcSPSTask(void const *argument)
-{
-	/* USER CODE BEGIN Start_ProcSPSTask */
-	(void)argument;
 
-	/* Infinite loop */
-	for (;;) {
-
-		osDelay(1);
-	}
-	/* USER CODE END Start_ProcSPSTask */
-}
-
-/* USER CODE BEGIN Header_Start_SubscribeTask */
 /**
 * @brief Function implementing the SubscrbTask thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_Start_SubscribeTask */
+#ifdef MASTERBOARD
 void __attribute__ ((noreturn)) Start_SubscribeTask(void const *argument)
 {
-	/* USER CODE BEGIN Start_SubscribeTask */
 	(void)argument;
 	subscribe_task_init();
 	/* Infinite loop */
 	for (;;) {
 		subscribe_task_run();
 	}
-	/* USER CODE END Start_SubscribeTask */
 }
+#endif
 
-/* USER CODE BEGIN Header_Start_ServiceTask */
 /**
 * @brief Function implementing the ServiceTask thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_Start_ServiceTask */
 void __attribute__ ((noreturn)) Start_ServiceTask(void const *argument)
 {
-	/* USER CODE BEGIN Start_ServiceTask */
 	(void)argument;
 	service_task_init();
 	/* Infinite loop */
@@ -568,19 +534,15 @@ void __attribute__ ((noreturn)) Start_ServiceTask(void const *argument)
 		service_task_run();
 		osDelay(1);
 	}
-	/* USER CODE END Start_ServiceTask */
 }
 
-/* USER CODE BEGIN Header_Start_ManchTask */
 /**
 * @brief Function implementing the ManchTask thread.
 * @param argument: Not used
 * @retval None
 */
-/* USER CODE END Header_Start_ManchTask */
 void __attribute__ ((noreturn)) Start_ManchTask(void const *argument)
 {
-	/* USER CODE BEGIN Start_ManchTask */
 
 	(void)argument;
 
@@ -591,11 +553,7 @@ void __attribute__ ((noreturn)) Start_ManchTask(void const *argument)
 		manchester_task_run();
 		vTaskDelay(pdMS_TO_TICKS(10U));
 	}
-	/* USER CODE END Start_ManchTask */
 }
-
-/* Private application code --------------------------------------------------*/
-/* USER CODE BEGIN Application */
 
 /**
 * @brief Function implementing the OpenThermTask thread.
@@ -610,10 +568,9 @@ void __attribute__ ((noreturn)) Start_OpenThermTask(void const *argument)
 
 	for (;;) {
 		opentherm_task_run();
+#ifndef SLAVEBOARD
 		vTaskDelay(pdMS_TO_TICKS(1000U));
+#endif
 	}
 }
-
-/* USER CODE END Application */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
+/*--------------------------------- E.O.F. -----------------------------------*/

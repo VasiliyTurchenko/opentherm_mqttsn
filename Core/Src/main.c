@@ -198,8 +198,10 @@ int main(void)
 	xfunc_out = myxfunc_out_RTOS; /* diagnostic print */
 
 	/* Start scheduler */
+#ifdef MASTERBOARD
 	log_set_mask_off(MSG_LEVEL_INFO);
 	log_set_mask_off(MSG_LEVEL_EXT_INF);
+#endif
 	osKernelStart();
 
 

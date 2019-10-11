@@ -22,8 +22,8 @@ set(GROUP_CORE_SRC_HELPERS
 		Core/Src/helpers/CRC32_helpers.c
 		Core/Src/helpers/messages.c
 		Core/Src/helpers/MQTT_config_helper.c
-		Core/Src/helpers/opentherm_wrappers.c
-		Core/Src/helpers/num_helpers.c
+#		Core/Src/helpers/opentherm_wrappers.c
+                Core/Src/helpers/num_helpers.c
 		Core/Src/helpers/logging.c
 		Core/Src/helpers/myCRT.c
 )

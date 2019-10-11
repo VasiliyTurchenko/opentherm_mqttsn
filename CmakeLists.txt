@@ -189,39 +189,39 @@ STM32_ADD_HEX_BIN_TARGETS(${MASTER_BOARD})
 STM32_PRINT_SIZE_OF_TARGETS(${MASTER_BOARD})
 #STM32_ADD_DUMP_TARGET(${MASTER_BOARD})
 
-#add_executable			(
-#	                        ${SLAVE_BOARD}
-#				${LIST_OF_SOURCES}
-#				${SLAVE_MCU_SOURCES_GROUP}
-#				${SLAVE_STARTUP_CODE_SOURCE}
-#				${LIST_OF_OPENTHERM_SOURCES}
-#				)
-#target_compile_definitions	(
-#	                                ${SLAVE_BOARD} PRIVATE
-#					-DSLAVEBOARD
-#					${D_SLAVE_MCU}
-#				)
+add_executable			(
+	                        ${SLAVE_BOARD}
+				${LIST_OF_SOURCES}
+				${SLAVE_MCU_SOURCES_GROUP}
+				${SLAVE_STARTUP_CODE_SOURCE}
+				${LIST_OF_OPENTHERM_SOURCES}
+				)
+target_compile_definitions	(
+	                                ${SLAVE_BOARD} PRIVATE
+					-DSLAVEBOARD
+					${D_SLAVE_MCU}
+				)
 
-#target_compile_options		(
-#	                                ${SLAVE_BOARD} PRIVATE
-#					${SLAVE_COMPILE_FLAGS}
-#				)
+target_compile_options		(
+	                                ${SLAVE_BOARD} PRIVATE
+					${SLAVE_COMPILE_FLAGS}
+				)
 
-#target_link_options		(	${SLAVE_BOARD} BEFORE PRIVATE
-#	                                "-Wl,-Map=${SLAVE_BOARD}.map"
-#					"-Wl,-T${SLAVE_LDSCRIPT}"
-#					"-Wl,--gc-sections"
-#					"-Wl,--verbose"
-#					"-Wl,-V"
-#					"-Wl,--cref"
-#					${SLAVE_COMPILE_FLAGS}
-#					)
-#target_link_libraries		(
-#	                                ${SLAVE_BOARD}
-#					c
-#					m
-#					nosys
-#				)
+target_link_options		(	${SLAVE_BOARD} BEFORE PRIVATE
+	                                "-Wl,-Map=${SLAVE_BOARD}.map"
+					"-Wl,-T${SLAVE_LDSCRIPT}"
+					"-Wl,--gc-sections"
+					"-Wl,--verbose"
+					"-Wl,-V"
+					"-Wl,--cref"
+					${SLAVE_COMPILE_FLAGS}
+					)
+target_link_libraries		(
+	                                ${SLAVE_BOARD}
+					c
+					m
+					nosys
+				)
 
 
 #STM32_ADD_HEX_BIN_TARGETS(${SLAVE_BOARD})

@@ -6,7 +6,6 @@
  *  @date 10-03-2019
  */
 
-#ifdef MASTERBOARD
 
 #include "watchdog.h"
 #include "lan.h"
@@ -198,35 +197,4 @@ void publish_task_run(void)
 		}
 	}
 }
-
-#elif SLAVEBOARD
-
-#include "main.h"
-#include "task_tokens.h"
-#include "watchdog.h"
-
-/**
- * @brief publish_task_init
- */
-void publish_task_init(void)
-{
-	register_magic(PUB_TASK_MAGIC);
-}
-
-/**
- * @brief publish_task_run
- */
-void publish_task_run(void)
-{
-	i_am_alive(PUB_TASK_MAGIC);
-	HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
-
-	osDelay(100U);
-	HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
-
-	osDelay(100U);
-}
-
-#else
-#error Neither MASTERBOARD nor SLAVEBOARD defined!
-#endif
+/* ----------------------------- E.O.F. --------------------------------------*/

@@ -110,7 +110,6 @@ void manchester_task_run(void)
 	if (xTaskNotifyWait(ULONG_MAX, ULONG_MAX, &notif_val, pdMS_TO_TICKS(1000U)) ==
 	    pdTRUE) {
 
-
 		if (notif_val == MANCHESTER_TRANSMIT_NOTIFY) {
 			manchester_Tx_data.dataPtr = Tx_buf;
 			manchester_Tx_data.numBits = 4 * CHAR_BIT;

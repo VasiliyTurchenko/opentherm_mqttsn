@@ -82,21 +82,10 @@ void subscribe_task_init(void)
 			&MQTT_sub_working_set, &MQS_IP_cfg);
 
 	/* got here - initialize context */
-//	TaskToNotify_afterTx = SubscrbTaskHandle;
-//	TaskToNotify_afterRx = SubscrbTaskHandle;
-
-/* code for slave */
-#ifdef SLAVEBOARD
-
-/* code for master */
-#elif defined(MASTERBOARD)
-
-#else
-#error NEITHER SLAVEBOARD NOR MASTERBOARD IS DEFINED!
-#endif
+	//	TaskToNotify_afterTx = SubscrbTaskHandle;
+	//	TaskToNotify_afterRx = SubscrbTaskHandle;
 }
 
-#if defined(MASTERBOARD)
 /**
  * @brief subscribe_task_run
  */
@@ -108,7 +97,7 @@ void subscribe_task_run(void)
 		osDelay(pdMS_TO_TICKS(200U));
 	}
 
-/* 1.	initialize sub context */
+	/* 1.	initialize sub context */
 	static uint32_t conn_attempts = 0U;
 	while (mqtt_sn_init_context(&mqttsncontext02, &MQTT_sub_working_set,
 				    &MQS_IP_cfg) != SUCCESS) {
@@ -119,11 +108,12 @@ void subscribe_task_run(void)
 		osDelay(200U);
 		/* watchdog reboots in case of many unsuccessful inits*/
 	}
-/* 2.	context initialized, connect  */
+	/* 2.	context initialized, connect  */
 	while (mqttsncontext02.state != CONNECTED) {
 		conn_attempts++; /* increment attempts counter */
 #ifdef MQTT_SN_SUB_DEBUG_PRINT
-		log_xprintf(MSG_LEVEL_EXT_INF, "subscribe connection attempt %d\n", conn_attempts);
+		log_xprintf(MSG_LEVEL_EXT_INF,
+			    "subscribe connection attempt %d\n", conn_attempts);
 #endif
 		if (mqtt_sn_connect(&mqttsncontext02) == SUCCESS) {
 			break;
@@ -132,13 +122,14 @@ void subscribe_task_run(void)
 		osDelay(200U); /* wait 200ms and try again */
 		HAL_GPIO_TogglePin(GREEN_LED_GPIO_Port, GREEN_LED_Pin);
 	}
-/* 3.	Now we have to subscribe to the topics */
+	/* 3.	Now we have to subscribe to the topics */
 	ErrorStatus subresult = ERROR;
 	mqttsncontext02.currPubSubMV = 0U; /* RESET list */
 	do {
 		/* request the LD to be subscribed */
 		ldid_t ld_id;
-		ld_id = OPENTHERM_GetNextMV_Controllable(&mqttsncontext02.currPubSubMV);
+		ld_id = OPENTHERM_GetNextMV_Controllable(
+			&mqttsncontext02.currPubSubMV);
 
 		if (mqttsncontext02.currPubSubMV == 0xFFFF) {
 			/* end of array reached */
@@ -147,8 +138,7 @@ void subscribe_task_run(void)
 #ifdef MQTT_SN_SUB_DEBUG_PRINT
 		log_xprintf(MSG_LEVEL_EXT_INF, "registering LDID:%d\n", nextLD);
 #endif
-		subresult = mqtt_sn_subscribe_topic(&mqttsncontext02,
-						   ld_id);
+		subresult = mqtt_sn_subscribe_topic(&mqttsncontext02, ld_id);
 		if (subresult == ERROR) {
 			break;
 		} /* exit the loop with regresult = error */
@@ -160,7 +150,7 @@ void subscribe_task_run(void)
 	} while (1);
 
 	/* here we've subscribed to all the topics */
-/* 4.	start the periodic part of the task */
+	/* 4.	start the periodic part of the task */
 	TickType_t xLastWakeTime;
 	TickType_t xPeriod = pdMS_TO_TICKS(200U);
 	xLastWakeTime = xTaskGetTickCount(); // get value only once!
@@ -170,18 +160,23 @@ void subscribe_task_run(void)
 		ErrorStatus publishresult = ERROR;
 		mqtt_sn_reset_last_packid(&mqttsncontext02);
 		for (;;) {
-			publishresult = mqtt_sn_poll_subscribed(&mqttsncontext02);
-			if (publishresult == ERROR) { break; }		/* break the internal infinite loop*/
+			publishresult =
+				mqtt_sn_poll_subscribed(&mqttsncontext02);
+			if (publishresult == ERROR) {
+				break;
+			} /* break the internal infinite loop*/
 			i_am_alive(SUB_TASK_MAGIC);
-			vTaskDelayUntil(&xLastWakeTime, xPeriod);	/* wake up every 50ms! */
+			vTaskDelayUntil(&xLastWakeTime,
+					xPeriod); /* wake up every 50ms! */
 		}
 	}
-/* 5.	release sockets */
+	/* 5.	release sockets */
 	ErrorStatus deinitresult;
 	deinitresult = mqtt_sn_deinit_context(&mqttsncontext02);
 	if (deinitresult == ERROR) {
 #ifdef MQTT_SN_SUB_DEBUG_PRINT
-		log_xputs(MSG_LEVEL_FATAL, "mqtt_sn_deinit_context(sub_context) error!\n");
+		log_xputs(MSG_LEVEL_FATAL,
+			  "mqtt_sn_deinit_context(sub_context) error!\n");
 #endif
 		/* need reboot */
 		for (;;) {
@@ -190,62 +185,4 @@ void subscribe_task_run(void)
 	}
 } /* of subscribe_task_run(void) */
 
-#endif
-
-#if defined(SLAVEBOARD)
-
-void subscribe_task_run(void)
-{
-//	static uint32_t data = 0U;
-
-//	uint32_t notif_val = 0U;
-
-	i_am_alive(SUB_TASK_MAGIC);
-
-//	*(uint32_t *)(&Rx_buf[0]) = 0U;
-
-//	xTaskNotifyStateClear(ManchTaskHandle);
-
-//	xTaskNotify(ManchTaskHandle, MANCHESTER_RECEIVE_NOTIFY,
-//		    eSetValueWithOverwrite);
-
-//	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
-//			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
-//		if (notif_val == (ErrorStatus)ERROR) {
-
-//			goto fExit;
-
-//		} else {
-//			xputs("\nsub task: notif. rx OK. ");
-//			xprintf("Received: %d\n", *(uint32_t *)(&Rx_buf[0]));
-//		}
-//	} else {
-//		goto fExit;
-//	}
-
-//	*(uint32_t *)(&Tx_buf[0]) = *(uint32_t *)(&Rx_buf[0]);
-
-//	vTaskDelay(pdMS_TO_TICKS(500U));
-
-//	xTaskNotifyStateClear(ManchTaskHandle);
-
-//	taskENTER_CRITICAL();
-//	xTaskNotify(ManchTaskHandle, MANCHESTER_TRANSMIT_NOTIFY,
-//		    eSetValueWithOverwrite);
-//	taskEXIT_CRITICAL();
-//	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
-//			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
-//		xputs("sub task: notif. tx ");
-//		if (notif_val == (ErrorStatus)ERROR) {
-//			xputs("ERR\n");
-//		} else {
-//			xputs("OK\n");
-//			data++;
-//		}
-//	}
-
-//fExit:
-//	return;
-}
-
-#endif
+/* ------------------------------ E.O.F. -------------------------------------*/

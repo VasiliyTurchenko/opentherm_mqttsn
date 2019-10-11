@@ -108,9 +108,9 @@ void myxfunc_out_no_RTOS(unsigned char c)
   */
 void myxfunc_out_RTOS(unsigned char c)
 {
-	while (osMutexWait(xfunc_outMutexHandle, 0) != osOK) {
+	while (osMutexWait(xfunc_outMutexHandle, pdMS_TO_TICKS(1U)) != osOK) {
 		//		taskYIELD();
-		vTaskDelay(pdMS_TO_TICKS(1U));
+//		vTaskDelay(pdMS_TO_TICKS(1U));
 	}
 	if (TxTail < BUFSIZE) {
 		MaxTail = (TxTail > MaxTail) ? TxTail : MaxTail;

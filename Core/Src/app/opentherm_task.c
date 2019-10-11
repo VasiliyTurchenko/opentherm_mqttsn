@@ -26,25 +26,31 @@
 
 #ifdef MASTERBOARD
 /* to do not include opentherm_master.h */
-extern tMV * OPENTHERM_getMV_for_Pub(size_t i);
-extern tMV * OPENTHERM_getControllableMV(size_t i);
+extern tMV *OPENTHERM_getMV_for_Pub(size_t i);
+extern tMV *OPENTHERM_getControllableMV(size_t i);
 extern openThermResult_t OPENTHERM_InitMaster(void);
 extern openThermResult_t OPENTHERM_ReadSlave(tMV *const pMV,
-				      uint32_t (*commFun)(uint32_t));
+					     uint32_t (*commFun)(uint32_t));
 extern openThermResult_t OPENTHERM_WriteSlave(tMV *const pMV,
-				       uint32_t (*commFun)(uint32_t));
-extern tMV * OPENTHERM_findMVbyLDID(ldid_t ldid);
+					      uint32_t (*commFun)(uint32_t));
+extern tMV *OPENTHERM_findMVbyLDID(ldid_t ldid);
 
 extern const Media_Desc_t Media0;
 void static create_pub_MV_file(void);
 static ErrorStatus configMVs(void);
 
 #elif SLAVEBOARD
-extern tMV * OPENTHERM_getMV(size_t i);
+#include "num_helpers.h"
+
+extern tMV *OPENTHERM_getMV(size_t i);
 extern openThermResult_t OPENTHERM_InitSlave(void);
 extern openThermResult_t OPENTHERM_SlaveRespond(uint32_t msg,
-					 uint32_t (*commFun)(uint32_t),
-					 tMV *(*GetMV)(uint8_t));
+						uint32_t (*commFun)(uint32_t),
+						tMV *(*GetMV)(uint8_t));
+extern tMV *OPENTHERM_GetSlaveMV(uint8_t DataId);
+extern ErrorStatus DAQ_Update_MV(tMV *pMV, numeric_t rcvd_num);
+/* imitates boiler */
+static void update_imitator(void);
 
 #else
 #error MASTERBOARD or SLAVEBOARD not defined
@@ -64,22 +70,30 @@ TaskHandle_t TaskToNotify_afterTx = NULL;
 TaskHandle_t TaskToNotify_afterRx = NULL;
 extern osThreadId ManchTaskHandle;
 
-bool	opentherm_configured = false;
+bool opentherm_configured = false;
 
+#ifdef MASTERBOARD
 /**
  * @brief comm_func function used by opentherm to communicate with the slave
  * @param val the value to be sent to the slave
  * @return value received from the slave
  */
-static uint32_t comm_func(uint32_t val)
+static uint32_t master_comm_func(uint32_t val)
 {
 	static uint32_t notif_val = 0U;
 	uint32_t retVal = val;
-	static const char * got_notif_tx_err = "got notification tx error.";
-	static const char * got_notif_tx_ok = "got notification tx OK.";
-	static const char * got_notif_rx_err = "got notif. rx error.";
-	static const char * got_notif_rx_ok = "got notif. rx OK.";
+	static const char *got_notif_tx_err = "got notification tx error.";
+	static const char *got_notif_tx_ok = "got notification tx OK.";
+	static const char *got_notif_rx_err = "got notif. rx error.";
+	static const char *got_notif_rx_ok = "got notif. rx OK.";
 
+	static uint32_t precalculated_delay_ms = 0U;
+	uint32_t t0;
+	uint32_t t1;
+
+	vTaskDelay(pdMS_TO_TICKS(precalculated_delay_ms));
+
+	t0 = HAL_GetTick();
 
 	*(uint32_t *)(&Tx_buf[0]) = val;
 
@@ -91,8 +105,8 @@ static uint32_t comm_func(uint32_t val)
 		if (notif_val == (ErrorStatus)ERROR) {
 			log_xputs(MSG_LEVEL_PROC_ERR, got_notif_tx_err);
 		} else {
-			log_xputs(MSG_LEVEL_INFO, got_notif_tx_ok);
-
+			log_xputs(MSG_LEVEL_PROC_ERR /*MSG_LEVEL_INFO*/,
+				  got_notif_tx_ok);
 		}
 	}
 
@@ -108,15 +122,121 @@ static uint32_t comm_func(uint32_t val)
 		if (notif_val == (ErrorStatus)ERROR) {
 			log_xputs(MSG_LEVEL_PROC_ERR, got_notif_rx_err);
 			retVal = 0U;
-
 		} else {
 			log_xputs(MSG_LEVEL_INFO, got_notif_rx_ok);
 			retVal = *(uint32_t *)(&Rx_buf[0]);
-			log_xprintf(MSG_LEVEL_EXT_INF, "Received: %d", retVal);
+			log_xprintf(MSG_LEVEL_PROC_ERR /*MSG_LEVEL_EXT_INF*/,
+				    "Received: %d", retVal);
 		}
 	}
+	t1 = HAL_GetTick();
+	uint32_t dt = t1 - t0;
+	precalculated_delay_ms = (dt > 1100U) ? 0U : (1100U - dt);
+
 	return retVal;
 }
+#endif
+
+//#ifdef SLAVEBOARD
+
+//#include "main.h"
+
+//#define STROBE_1                                                               \
+//	do {                                                                   \
+//		HAL_GPIO_WritePin(ESP_PWR_GPIO_Port, ESP_PWR_Pin,    \
+//				  GPIO_PIN_SET);                               \
+//	} while (0)
+
+//#define STROBE_0                                                               \
+//	do {                                                                   \
+//		HAL_GPIO_WritePin(ESP_PWR_GPIO_Port, ESP_PWR_Pin,    \
+//				  GPIO_PIN_RESET);                             \
+//	} while (0)
+
+/**
+ * @brief slave_comm_func
+ * @param val
+ * @return
+ */
+static ErrorStatus slave_comm_func_rx(uint32_t *rxd)
+{
+	static const char *got_notif_rx_err = "got notif. rx error.";
+	static const char *got_notif_rx_ok = "got notif. rx OK.";
+	ErrorStatus notif_val;
+	ErrorStatus retVal = ERROR;
+
+	*(uint32_t *)(&Rx_buf[0]) = 0x0BADF00DU;
+	//STROBE_1;
+	xTaskNotify(ManchTaskHandle, MANCHESTER_RECEIVE_NOTIFY,
+		    eSetValueWithOverwrite);
+
+	xTaskNotifyStateClear(NULL);
+	static char hex_val[] = {"0x00000000"};
+
+	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
+			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
+		if (notif_val == (ErrorStatus)ERROR) {
+			if (*(uint32_t *)(&Rx_buf[0]) == 0x0BADF00DU) {
+				/* timeout */
+				retVal = ERROR;
+				*rxd = 0U;
+			} else {
+				log_xputs(MSG_LEVEL_PROC_ERR, got_notif_rx_err);
+				retVal = ERROR;
+				*rxd = *(uint32_t *)(&Rx_buf[0]);
+			}
+
+		} else {
+			log_xputs(MSG_LEVEL_INFO, got_notif_rx_ok);
+			retVal = SUCCESS;
+			*rxd = *(uint32_t *)(&Rx_buf[0]);
+			uint32_to_asciiz(*rxd, hex_val);
+			log_xprintf(MSG_LEVEL_EXT_INF, "Received: %s", hex_val);
+		}
+	} else {
+		/* we can't get here */
+		log_xputs(MSG_LEVEL_FATAL, "slave_comm_func_rx() bad place!");
+	}
+
+	//STROBE_0;
+	return retVal;
+}
+
+/**
+ * @brief slave_comm_func_tx
+ * @param val
+ */
+static uint32_t slave_comm_func_tx(uint32_t val)
+{
+	static uint32_t notif_val = 0U;
+	static const char *got_notif_tx_err = "got notification tx error.";
+	static const char *got_notif_tx_ok = "got notification tx OK.";
+
+	*(uint32_t *)(&Tx_buf[0]) = val;
+
+	static char hex_val[] = {"0x00000000"};
+
+	//STROBE_1;
+
+	xTaskNotify(ManchTaskHandle, MANCHESTER_TRANSMIT_NOTIFY,
+		    eSetValueWithOverwrite);
+
+	xTaskNotifyStateClear(NULL);
+	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val, pdMS_TO_TICKS(64U)) ==
+	    pdTRUE) {
+		if (notif_val == (ErrorStatus)ERROR) {
+			log_xputs(MSG_LEVEL_PROC_ERR, got_notif_tx_err);
+		} else {
+			log_xputs(MSG_LEVEL_INFO, got_notif_tx_ok);
+			uint32_to_asciiz(val, hex_val);
+			log_xprintf(MSG_LEVEL_INFO, "Sent %s", hex_val);
+		}
+	}
+	//STROBE_0;
+	return 0U;
+}
+
+//#endif
 
 /**
  * @brief opentherm_task_init initializes opentherm driver
@@ -138,14 +258,17 @@ void opentherm_task_init(void)
 		messages_TaskInit_OK();
 		TaskToNotify_afterTx = OpenThermTaskHandle;
 		TaskToNotify_afterRx = OpenThermTaskHandle;
-	/* config file workaround */
+		/* config file workaround */
 #ifdef MASTERBOARD
 		while (configMVs() != SUCCESS) {
 			/* error configuration read */
-			log_xputs(MSG_LEVEL_TASK_INIT, "Existing PUB_MV file configuration failed! Creating a new PUB_MV.");
+			log_xputs(
+				MSG_LEVEL_TASK_INIT,
+				"Existing PUB_MV file configuration failed! Creating a new PUB_MV.");
 			create_pub_MV_file();
 		}
-		log_xputs(MSG_LEVEL_TASK_INIT, "Report types for MVs are set up!");
+		log_xputs(MSG_LEVEL_TASK_INIT,
+			  "Report types for MVs are set up!");
 #endif
 	}
 	opentherm_configured = true;
@@ -158,28 +281,31 @@ void opentherm_task_init(void)
 void opentherm_task_run(void)
 {
 	/* let's start */
-	openThermResult_t	res;
+	openThermResult_t res;
 	for (size_t i = 0U; i < MV_ARRAY_LENGTH; i++) {
 		i_am_alive(OPENTHERM_TASK_MAGIC);
 
-	/* 1. get controllable MV */
+		/* 1. get controllable MV */
 		tMV *pMV = OPENTHERM_getControllableMV(i);
 		if (pMV == NULL) {
-			log_xputs(MSG_LEVEL_PROC_ERR, "OPENTHERM_getControllableMV ERROR: pMV == NULL");
+			log_xputs(
+				MSG_LEVEL_PROC_ERR,
+				"OPENTHERM_getControllableMV ERROR: pMV == NULL");
 			continue;
 		}
-	/* 2. write to the slave */
-		res = OPENTHERM_WriteSlave(pMV, comm_func);
+		/* 2. write to the slave */
+		res = OPENTHERM_WriteSlave(pMV, master_comm_func);
 		log_xputs(MSG_LEVEL_INFO, openThermErrorStr(res));
 
-	/* 3. get publicable MV */
+		/* 3. get publicable MV */
 		pMV = OPENTHERM_getMV_for_Pub(i);
 		if (pMV == NULL) {
-			log_xputs(MSG_LEVEL_PROC_ERR, "OPENTHERM_getMV_for_Pub ERROR: pMV == NULL");
+			log_xputs(MSG_LEVEL_PROC_ERR,
+				  "OPENTHERM_getMV_for_Pub ERROR: pMV == NULL");
 			continue;
 		}
-	/* 4. read slave  */
-		res = OPENTHERM_ReadSlave(pMV, comm_func);
+		/* 4. read slave  */
+		res = OPENTHERM_ReadSlave(pMV, master_comm_func);
 		log_xputs(MSG_LEVEL_INFO, openThermErrorStr(res));
 	}
 }
@@ -188,7 +314,68 @@ void opentherm_task_run(void)
 void opentherm_task_run(void)
 {
 	i_am_alive(OPENTHERM_TASK_MAGIC);
+
+	uint32_t rcvd;
+	/* wait for incoming message */
+	//STROBE_1;
+	ErrorStatus rx_result;
+	do {
+		//		taskYIELD();
+		rx_result = slave_comm_func_rx(&rcvd);
+		i_am_alive(OPENTHERM_TASK_MAGIC);
+	} while (rx_result != SUCCESS);
+
+	/* something useful was received */
+	/* standard requires 80 ... 800 ms delay before answer */
+	vTaskDelay(pdMS_TO_TICKS(100U));
+
+	openThermResult_t res;
+	res = OPENTHERM_SlaveRespond(rcvd, slave_comm_func_tx,
+				     OPENTHERM_GetSlaveMV);
+	if (res != OPENTHERM_ResOK) {
+		log_xputs(MSG_LEVEL_PROC_ERR, openThermErrorStr(res));
+	} else {
+		log_xputs(MSG_LEVEL_INFO, "OPENTHERM_SlaveRespond() OK.");
+	}
+	//STROBE_0;
+	/* standard requires at least 100 ms delay after answer */
+	vTaskDelay(pdMS_TO_TICKS(100U));
+
+	/* */
+	update_imitator();
 }
+
+/**
+ * @brief update_imitator
+ */
+static void update_imitator(void)
+{
+	static const ldid_t boiler_temp_id = MSG_ID_TBOILER;
+	tMV *BoileTempMV = NULL;
+	static float fake_temperature = 0.0f;
+	static bool inc = true;
+	BoileTempMV = OPENTHERM_GetSlaveMV((uint8_t)boiler_temp_id);
+	if (BoileTempMV != NULL) {
+		if (inc) {
+			fake_temperature += 0.5f;
+			if (fake_temperature >= BoileTempMV->Highest.fVal) {
+				inc = false;
+			}
+		} else {
+			fake_temperature -= 0.5f;
+			if (fake_temperature <= BoileTempMV->Lowest.fVal) {
+				inc = true;
+			}
+		}
+		numeric_t setpoint = {FLOAT_VAL, {.f_val = fake_temperature}};
+		if (DAQ_Update_MV(BoileTempMV, setpoint) == SUCCESS) {
+			log_xputs(MSG_LEVEL_INFO, "fake_temp was set");
+		} else {
+			log_xputs(MSG_LEVEL_PROC_ERR, "fake_temp set error");
+		}
+	}
+}
+
 #else
 #endif
 
@@ -209,18 +396,15 @@ static const char no_[] = "NO__\n";
 static ErrorStatus configMVs(void)
 {
 	ErrorStatus retVal = ERROR;
-	size_t	bwr;	/* bytes was read */
+	size_t bwr; /* bytes was read */
 	char read_rec[rec_len];
-	size_t	pos = 0U;
+	size_t pos = 0U;
 	size_t configured = 0U;
 
 	do {
-		if ( (ReadBytes(&Media0,
-				"PUB_MV",
-				pos,
-				rec_len,
-				&bwr,
-				(uint8_t*)&read_rec) == FR_OK) && (bwr == rec_len) ){
+		if ((ReadBytes(&Media0, "PUB_MV", pos, rec_len, &bwr,
+			       (uint8_t *)&read_rec) == FR_OK) &&
+		    (bwr == rec_len)) {
 			/* one record was read */
 			/* parse record */
 			enum tReport rep_type;
@@ -242,7 +426,7 @@ static ErrorStatus configMVs(void)
 			ldid = (ldid_t)adec2uint16(read_rec, 5U);
 
 			/* find relevant MV */
-			tMV * targetMV = OPENTHERM_findMVbyLDID(ldid);
+			tMV *targetMV = OPENTHERM_findMVbyLDID(ldid);
 			if (targetMV != NULL) {
 				targetMV->ReportType = rep_type;
 			} else {
@@ -267,33 +451,31 @@ static ErrorStatus configMVs(void)
  */
 static void create_pub_MV_file(void)
 {
-	char	outstr[rec_len];
+	char outstr[rec_len];
 
-	strncpy((char*)outstr, template_str, sizeof(template_str));
+	strncpy((char *)outstr, template_str, sizeof(template_str));
 
 	size_t estimated_fsize = MV_ARRAY_LENGTH * (sizeof(template_str));
-	const char * pub_mv = "PUB_MV";
+	const char *pub_mv = "PUB_MV";
 
 	if (DeleteFile(&Media0, pub_mv) != FR_OK) {
-
 		log_xputs(MSG_LEVEL_SERIOUS, "Can not delete file PUB_MV");
 	}
 
-	if (AllocSpaceForFile(&Media0, pub_mv,estimated_fsize) != FR_OK) {
+	if (AllocSpaceForFile(&Media0, pub_mv, estimated_fsize) != FR_OK) {
 		log_xputs(MSG_LEVEL_SERIOUS, " file PUB_MV creation error!");
 	} else {
-	/* write entry by entry */
+		/* write entry by entry */
 		size_t fpos = 0U;
 		size_t bw = 0U;
 		size_t btw = sizeof(template_str);
 
 		for (size_t i = 0; i < MV_ARRAY_LENGTH; i++) {
+			tMV *pMV = OPENTHERM_getMV_for_Pub(i);
 
-			tMV * pMV = OPENTHERM_getMV_for_Pub(i);
+			uint16_to_asciiz((uint16_t)pMV->LD_ID, (char *)outstr);
 
-			uint16_to_asciiz((uint16_t)pMV->LD_ID, (char*)outstr);
-
-			if(pMV->ReportType == GI) {
+			if (pMV->ReportType == GI) {
 				strncpy(&outstr[6], gi_, sizeof(gi_));
 			} else if (pMV->ReportType == SP) {
 				strncpy(&outstr[6], sp_, sizeof(sp_));
@@ -303,15 +485,16 @@ static void create_pub_MV_file(void)
 				strncpy(&outstr[6], no_, sizeof(no_));
 			}
 
-			if ((WriteBytes(&Media0, pub_mv, fpos, btw, &bw, (const uint8_t*)outstr) != FR_OK) ||
-				(bw != btw) ) {
-				log_xputs(MSG_LEVEL_SERIOUS, "PUB_MV file write error!");
+			if ((WriteBytes(&Media0, pub_mv, fpos, btw, &bw,
+					(const uint8_t *)outstr) != FR_OK) ||
+			    (bw != btw)) {
+				log_xputs(MSG_LEVEL_SERIOUS,
+					  "PUB_MV file write error!");
 				break;
 			} else {
 				fpos = fpos + btw;
 			}
 		}
-
 	}
 }
 #endif
