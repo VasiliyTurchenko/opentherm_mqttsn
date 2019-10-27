@@ -48,6 +48,17 @@
 #include "manchester.h"
 #include "bit_queue.h"
 
+#ifdef MASTERBOARD
+#define EMPTY_LINE	(GPIO_PIN_RESET)
+#define ACTIVE_LINE	(GPIO_PIN_SET)
+#elif SLAVEBOARD
+#define EMPTY_LINE	(GPIO_PIN_SET)
+#define ACTIVE_LINE	(GPIO_PIN_RESET)
+#else
+	#error "MASTER_BOARD or SLAVEBOARD must be defined!"
+#endif
+
+
 /* local enums */
 typedef enum Edge { /* edge type */
 		    rising,
@@ -390,7 +401,7 @@ ErrorStatus prepareRx(MANCHESTER_Context_t *const context)
 	BaseType_t xResult;
 	uint32_t ulNotifiedValue;
 	if (HAL_GPIO_ReadPin(MANCHESTER_RX_GPIO_Port, MANCHESTER_RX_Pin) !=
-	    GPIO_PIN_RESET) {
+	    EMPTY_LINE/*GPIO_PIN_RESET*/) {
 		PR_ERR_LINE;
 		goto fExit;
 	}
@@ -409,7 +420,7 @@ ErrorStatus prepareRx(MANCHESTER_Context_t *const context)
 		goto fExit;
 	}
 	if (HAL_GPIO_ReadPin(MANCHESTER_RX_GPIO_Port, MANCHESTER_RX_Pin) !=
-	    GPIO_PIN_SET) {
+	    ACTIVE_LINE/*GPIO_PIN_SET*/) {
 		PR_ERR_LINE;
 		goto fExit;
 	}
@@ -456,7 +467,7 @@ ErrorStatus receiveBits(MANCHESTER_Context_t *context, BitQueue_t *qu)
 
 	TickType_t timeOut = pdMS_TO_TICKS(context->pulseTimeout);
 	if (HAL_GPIO_ReadPin(MANCHESTER_RX_GPIO_Port, MANCHESTER_RX_Pin) !=
-	    GPIO_PIN_SET) {
+	    ACTIVE_LINE/*GPIO_PIN_SET*/) {
 		RB_ERR_LINE;
 		goto fExit;
 	}
@@ -468,7 +479,7 @@ ErrorStatus receiveBits(MANCHESTER_Context_t *context, BitQueue_t *qu)
 		goto fExit;
 	}
 	if (HAL_GPIO_ReadPin(MANCHESTER_RX_GPIO_Port, MANCHESTER_RX_Pin) !=
-	    GPIO_PIN_RESET) {
+	    EMPTY_LINE/*GPIO_PIN_RESET*/) {
 		RB_ERR_LINE;
 		goto fExit;
 	}
@@ -479,7 +490,7 @@ ErrorStatus receiveBits(MANCHESTER_Context_t *context, BitQueue_t *qu)
 		xTaskNotifyWait(pdFALSE, ULONG_MAX, &ulNotifiedValue, timeOut);
 	if (xResult != pdPASS) {
 		if (HAL_GPIO_ReadPin(MANCHESTER_RX_GPIO_Port,
-				     MANCHESTER_RX_Pin) == GPIO_PIN_RESET) {
+				     MANCHESTER_RX_Pin) == EMPTY_LINE/*GPIO_PIN_RESET*/) {
 			pulses.low = context->halfBitTime;
 			retVal = processPulse(&pulses, context, qu);
 			if (retVal != SUCCESS) {
@@ -492,7 +503,7 @@ ErrorStatus receiveBits(MANCHESTER_Context_t *context, BitQueue_t *qu)
 		}
 	} else {
 		if (HAL_GPIO_ReadPin(MANCHESTER_RX_GPIO_Port,
-				     MANCHESTER_RX_Pin) != GPIO_PIN_SET) {
+				     MANCHESTER_RX_Pin) != ACTIVE_LINE/*GPIO_PIN_SET*/) {
 			RB_ERR_LINE;
 			goto fExit;
 		}

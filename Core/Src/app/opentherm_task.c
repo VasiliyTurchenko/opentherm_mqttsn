@@ -36,8 +36,18 @@ extern openThermResult_t OPENTHERM_WriteSlave(tMV *const pMV,
 extern tMV *OPENTHERM_findMVbyLDID(ldid_t ldid);
 
 extern const Media_Desc_t Media0;
+
+#if(0)
 void static create_pub_MV_file(void);
 static ErrorStatus configMVs(void);
+
+static ErrorStatus customize_ctrl_MVs(void);
+void static create_ctrl_MV_file(void);
+#endif
+
+static ErrorStatus configOpenTherm(void);
+static void create_CFG_OT_file(void);
+
 
 #elif SLAVEBOARD
 #include "num_helpers.h"
@@ -137,7 +147,7 @@ static uint32_t master_comm_func(uint32_t val)
 }
 #endif
 
-//#ifdef SLAVEBOARD
+#ifdef SLAVEBOARD
 
 //#include "main.h"
 
@@ -173,7 +183,7 @@ static ErrorStatus slave_comm_func_rx(uint32_t *rxd)
 	xTaskNotifyStateClear(NULL);
 	static char hex_val[] = {"0x00000000"};
 
-	if (xTaskNotifyWait(0x00U, ULONG_MAX, &notif_val,
+	if (xTaskNotifyWait(0x00U, ULONG_MAX, (uint32_t*)&notif_val,
 			    pdMS_TO_TICKS(1000U)) == pdTRUE) {
 		if (notif_val == (ErrorStatus)ERROR) {
 			if (*(uint32_t *)(&Rx_buf[0]) == 0x0BADF00DU) {
@@ -236,7 +246,7 @@ static uint32_t slave_comm_func_tx(uint32_t val)
 	return 0U;
 }
 
-//#endif
+#endif
 
 /**
  * @brief opentherm_task_init initializes opentherm driver
@@ -260,15 +270,15 @@ void opentherm_task_init(void)
 		TaskToNotify_afterRx = OpenThermTaskHandle;
 		/* config file workaround */
 #ifdef MASTERBOARD
-		while (configMVs() != SUCCESS) {
+		while (configOpenTherm() != SUCCESS) {
 			/* error configuration read */
 			log_xputs(
 				MSG_LEVEL_TASK_INIT,
-				"Existing PUB_MV file configuration failed! Creating a new PUB_MV.");
-			create_pub_MV_file();
+				"Existing CFG_OT file configuration failed! Creating a new CFG_OT.");
+			create_CFG_OT_file();
 		}
 		log_xputs(MSG_LEVEL_TASK_INIT,
-			  "Report types for MVs are set up!");
+			  "Opentherm is set up!");
 #endif
 	}
 	opentherm_configured = true;
@@ -287,26 +297,23 @@ void opentherm_task_run(void)
 
 		/* 1. get controllable MV */
 		tMV *pMV = OPENTHERM_getControllableMV(i);
-		if (pMV == NULL) {
-			log_xputs(
-				MSG_LEVEL_PROC_ERR,
-				"OPENTHERM_getControllableMV ERROR: pMV == NULL");
-			continue;
-		}
-		/* 2. write to the slave */
-		res = OPENTHERM_WriteSlave(pMV, master_comm_func);
-		log_xputs(MSG_LEVEL_INFO, openThermErrorStr(res));
+		if ( (pMV != NULL) && \
+			/* this is a second MV in the pair */
+			/* this MV is already processed */
+		     ((pMV->LD_ID & 0x100U) == 0U) ) {
 
+			/* 2. write to the slave */
+			res = OPENTHERM_WriteSlave(pMV, master_comm_func);
+			log_xputs(MSG_LEVEL_INFO, openThermErrorStr(res));
+		}
 		/* 3. get publicable MV */
 		pMV = OPENTHERM_getMV_for_Pub(i);
-		if (pMV == NULL) {
-			log_xputs(MSG_LEVEL_PROC_ERR,
-				  "OPENTHERM_getMV_for_Pub ERROR: pMV == NULL");
-			continue;
+		if ( (pMV != NULL) && \
+		     ((pMV->LD_ID & 0x100U) == 0U) ) {
+			/* 4. read slave  */
+			res = OPENTHERM_ReadSlave(pMV, master_comm_func);
+			log_xputs(MSG_LEVEL_INFO, openThermErrorStr(res));
 		}
-		/* 4. read slave  */
-		res = OPENTHERM_ReadSlave(pMV, master_comm_func);
-		log_xputs(MSG_LEVEL_INFO, openThermErrorStr(res));
 	}
 }
 
@@ -346,29 +353,31 @@ void opentherm_task_run(void)
 }
 
 /**
- * @brief update_imitator
+ * @brief sweep
+ * @param ldid
+ * @param step
+ * @param inc
  */
-static void update_imitator(void)
+static void sweep(ldid_t ldid, float step, bool * inc)
 {
-	static const ldid_t boiler_temp_id = MSG_ID_TBOILER;
-	tMV *BoileTempMV = NULL;
-	static float fake_temperature = 0.0f;
-	static bool inc = true;
-	BoileTempMV = OPENTHERM_GetSlaveMV((uint8_t)boiler_temp_id);
-	if (BoileTempMV != NULL) {
-		if (inc) {
-			fake_temperature += 0.5f;
-			if (fake_temperature >= BoileTempMV->Highest.fVal) {
-				inc = false;
+	tMV *targetMV = NULL;
+	float fake_val;
+	targetMV = OPENTHERM_GetSlaveMV((uint8_t)ldid);
+	if (targetMV != NULL) {
+		fake_val = targetMV->Val.fVal;
+		if (*inc) {
+			fake_val += step;
+			if (fake_val >= targetMV->Highest.fVal) {
+				*inc = false;
 			}
 		} else {
-			fake_temperature -= 0.5f;
-			if (fake_temperature <= BoileTempMV->Lowest.fVal) {
-				inc = true;
+			fake_val -= step;
+			if (fake_val <= targetMV->Lowest.fVal) {
+				*inc = true;
 			}
 		}
-		numeric_t setpoint = {FLOAT_VAL, {.f_val = fake_temperature}};
-		if (DAQ_Update_MV(BoileTempMV, setpoint) == SUCCESS) {
+		numeric_t setpoint = {FLOAT_VAL, {.f_val = fake_val}};
+		if (DAQ_Update_MV(targetMV, setpoint) == SUCCESS) {
 			log_xputs(MSG_LEVEL_INFO, "fake_temp was set");
 		} else {
 			log_xputs(MSG_LEVEL_PROC_ERR, "fake_temp set error");
@@ -376,10 +385,220 @@ static void update_imitator(void)
 	}
 }
 
+/**
+ * @brief update_imitator
+ */
+static void update_imitator(void)
+{
+	static const ldid_t boiler_temp_id = MSG_ID_TBOILER;
+	static bool MSG_ID_TBOILER_inc = true;
+	sweep(boiler_temp_id, 0.05f, &MSG_ID_TBOILER_inc);
+
+	static const ldid_t outside_temp_id = MSG_ID_TOUTSIDE;
+	static bool MSG_ID_TOUTSIDE_inc = true;
+	sweep(outside_temp_id, 0.025f, &MSG_ID_TOUTSIDE_inc);
+
+	static const ldid_t mod_level = MSG_ID_REL_MOD_LEVEL;
+	static bool MSG_ID_REL_MOD_LEVEL_inc = true;
+	sweep(mod_level, 0.001f, &MSG_ID_REL_MOD_LEVEL_inc);
+
+	static const ldid_t tret = MSG_ID_TRET;
+	static bool MSG_ID_TRET_inc = true;
+	sweep(tret, 0.3f, &MSG_ID_TRET_inc);
+
+}
+
+
 #else
 #endif
 
 #ifdef MASTERBOARD
+
+
+static const char template[] = "000:N/READ:GI/WRITE:N\n";
+static const size_t t_len = sizeof(template);
+static const char * filename = "CFG_OT";
+static const size_t yn_pos = 4U;
+
+/**
+ * @brief configOpenTherm reads configuration file and setups parameters
+ * of the OpenTherm app
+ * @return ERROR or SUCCESS
+ */
+static ErrorStatus configOpenTherm(void)
+{
+/*
+	format:
+	DATA_ID:Y|N/READ:SP|GI|SG|NO/WRITE:Y|N
+*/
+
+
+
+	static const size_t read_pos = 5U;
+	static const size_t spgi_pos = 11U;
+	static const size_t write_pos = 13U;
+	static const size_t wr_pos = 20U;
+
+	static const char sp_[] = "SP";
+	static const char gi_[] = "GI";
+	static const char spgi_[] = "SG";
+	static const char no_[] = "NO";
+
+	static const char y_[] = "Y\n";
+	static const char n_[] = "N\n";
+
+//	static const char data_id[] = "000";
+	static const char read[] = "/READ:";
+	static const char write[] = "/WRITE:";
+
+	ErrorStatus retVal = ERROR;
+	size_t bwr; /* bytes was read */
+	char read_rec[t_len];
+	size_t pos = 0U;
+	size_t configured = 0U;
+
+	do {
+		if ((ReadBytes(&Media0, filename, pos, t_len, &bwr,
+			       (uint8_t *)&read_rec) == FR_OK) &&
+		    (bwr == t_len)) {
+			/* one record was read */
+			/* parse record */
+			uint8_t dataid = adec2byte(&read_rec[0], 3U);
+
+			bool off = (read_rec[yn_pos] == 'N') ? true : false;
+
+			if ( strncmp(read, &read_rec[read_pos], (sizeof(read) - 1U)) != 0 ) {
+				break;
+			}
+			enum tReport rep_type;
+			size_t to_cmp = sizeof (sp_) - 1U;
+			if (strncmp(sp_, &read_rec[spgi_pos], to_cmp) == 0) {
+				rep_type = SP;
+			} else if ((strncmp(gi_, &read_rec[spgi_pos], to_cmp) == 0)) {
+				rep_type = GI;
+			} else if ((strncmp(spgi_, &read_rec[spgi_pos], to_cmp) == 0)) {
+				rep_type = SP_GI;
+			} else if ((strncmp(no_, &read_rec[spgi_pos], to_cmp) == 0)) {
+				rep_type = Inact;
+			} else {
+				/* error */
+				break;
+			}
+
+			if (strncmp(write, &read_rec[write_pos], (sizeof(write) - 1U)) != 0) {
+				break;
+			}
+			enum tControllable ctrl_type;
+			if (strcmp(y_, &read_rec[wr_pos]) == 0) {
+				ctrl_type = Yes;
+			} else if ((strcmp(n_, &read_rec[wr_pos]) == 0)) {
+				ctrl_type = No;
+			} else {
+				/* error */
+				break;
+			}
+
+			/* search for OT message */
+			const opentThermMsg_t * msg = GetMessageTblEntry((ldid_t)dataid);
+			if (msg == NULL) {
+				break;
+			}
+
+			if ( (ctrl_type == Yes) && ((msg->msgMode != wr) && (msg->msgMode != rw)) ) {
+				break; // can not write to the read-only entry
+			}
+
+			/* find one or two MVs*/
+			/* find relevant MV */
+			tMV *targetMV = OPENTHERM_findMVbyLDID((ldid_t)dataid);
+			if (targetMV != NULL) {
+				targetMV->ReportType = rep_type;
+				targetMV->Ctrl = ctrl_type;
+				targetMV->Off = off;
+			} else {
+				/* error */
+				break;
+			}
+			if (msg->msgDataType2 != none ) {
+				ldid_t second_id;
+				second_id = (ldid_t)dataid | (ldid_t)0x100U;
+				targetMV = OPENTHERM_findMVbyLDID(second_id);
+				if (targetMV != NULL) {
+					targetMV->ReportType = rep_type;
+					targetMV->Ctrl = ctrl_type;
+					targetMV->Off = off;
+				} else {
+					/* error */
+					break;
+				}
+			}
+			pos = pos + t_len;
+			configured++;
+
+		}  else {
+			break;
+		}
+	} while (bwr == t_len);
+	if (configured == MSG_TBL_LENGTH) {
+		retVal = SUCCESS;
+	}
+	return retVal;
+}
+
+
+static void create_CFG_OT_file(void)
+{
+	char outstr[t_len];
+
+	strncpy((char *)outstr, template, t_len);
+
+	size_t estimated_fsize = MSG_TBL_LENGTH * t_len;
+
+	if (DeleteFile(&Media0, filename) != FR_OK) {
+		log_xputs(MSG_LEVEL_SERIOUS, "Can not delete file CFG_OT");
+	}
+
+	if (AllocSpaceForFile(&Media0, filename, estimated_fsize) != FR_OK) {
+		log_xputs(MSG_LEVEL_SERIOUS, " file CFG_OT creation error!");
+	} else {
+		/* write entry by entry */
+		size_t fpos = 0U;
+		size_t bw = 0U;
+		size_t btw = t_len;
+
+		for (size_t i = 0; i < MSG_TBL_LENGTH; i++) {
+			const opentThermMsg_t * msg = &messagesTbl[i];
+			uint8_to_asciiz((uint8_t)msg->msgId, (char *)outstr);
+
+			/* by default only dataID = 0, 1, 17, and 25 are ON */
+			switch (i) {
+			case 0:
+			case 1:
+			case 17:
+			case 25:
+				{
+					outstr[yn_pos] = 'Y';
+					break;
+				}
+			default:{
+					outstr[yn_pos] = 'N';
+					break;
+				}
+			}
+			if ((WriteBytes(&Media0, filename, fpos, btw, &bw,
+					(const uint8_t *)outstr) != FR_OK) ||
+			    (bw != btw)) {
+				log_xputs(MSG_LEVEL_SERIOUS,
+					  "CFG_OT file write error!");
+				break;
+			} else {
+				fpos = fpos + btw;
+			}
+		}
+	}
+}
+
+#if(0)
 
 /* template MV config string */
 static const char template_str[] = "00000:SPGI\n";
@@ -497,4 +716,117 @@ static void create_pub_MV_file(void)
 		}
 	}
 }
+
+/**  CONTROLLABLES CUSTOMIZATION **/
+
+static const char cust_ctrl_str[] = "00000:WREN\n"; // write enabled
+static const size_t cust_rec_len = sizeof(cust_ctrl_str);
+static const char wren_[] = "WREN\n";
+static const char skip_[] = "SKIP\n";
+
+/**
+ * @brief customize_ctrl_MVs customizes Opentherm's MVs to the boiler capabilities
+ *	  nol all the statndard defined writeable entries exist in the particular boiler
+ * @return
+ * @note  must be called after OPENTHERM_InitMaster()
+ */
+static ErrorStatus customize_ctrl_MVs(void)
+{
+
+	ErrorStatus retVal = ERROR;
+	size_t bwr; /* bytes was read */
+	char read_rec[cust_rec_len];
+	size_t pos = 0U;
+	size_t configured = 0U;
+
+	do {
+		if ((ReadBytes(&Media0, "CTRL_MV", pos, rec_len, &bwr,
+			       (uint8_t *)&read_rec) == FR_OK) &&
+		    (bwr == rec_len)) {
+			/* one record was read */
+			/* parse record */
+			enum tControllable ctrl_type;
+
+			if (strcmp(wren_, &read_rec[6]) == 0) {
+				ctrl_type = Yes;
+			} else if ((strcmp(skip_, &read_rec[6]) == 0)) {
+				ctrl_type = No;
+			} else {
+				/* error */
+				break;
+			}
+
+			ldid_t ldid;
+			ldid = (ldid_t)adec2uint16(read_rec, 5U);
+
+			/* find relevant MV */
+			tMV *targetMV = OPENTHERM_findMVbyLDID(ldid);
+			if (targetMV != NULL) {
+				if (targetMV->Ctrl == Yes) {
+					targetMV->Ctrl = ctrl_type;
+				}
+			} else {
+				/* error */
+				break;
+			}
+			pos = pos + rec_len;
+			configured++;
+
+		} else {
+			break;
+		}
+	} while (bwr == rec_len);
+	if (configured == MV_ARRAY_LENGTH) {
+		retVal = SUCCESS;
+	}
+	return retVal;
+
+}
+
+/**
+ * @brief create_ctrl_MV_file
+ */
+static void create_ctrl_MV_file(void)
+{
+	char outstr[cust_rec_len];
+
+	strncpy((char *)outstr, cust_ctrl_str, sizeof(cust_ctrl_str));
+
+	size_t estimated_fsize = MV_ARRAY_LENGTH * (sizeof(template_str));
+	const char *ctrl_mv = "CTRL_MV";
+
+	if (DeleteFile(&Media0, ctrl_mv) != FR_OK) {
+		log_xputs(MSG_LEVEL_SERIOUS, "Can not delete file CTRL_MV");
+	}
+
+	if (AllocSpaceForFile(&Media0, ctrl_mv, estimated_fsize) != FR_OK) {
+		log_xputs(MSG_LEVEL_SERIOUS, " file CTRL_MV creation error!");
+	} else {
+		/* write entry by entry */
+		size_t fpos = 0U;
+		size_t bw = 0U;
+		size_t btw = sizeof(cust_ctrl_str);
+
+		for (size_t i = 0; i < MV_ARRAY_LENGTH; i++) {
+			tMV *pMV = OPENTHERM_getMV_for_Pub(i);
+
+			uint16_to_asciiz((uint16_t)pMV->LD_ID, (char *)outstr);
+
+			/* all controllables are disabled by default */
+			strncpy(&outstr[6], skip_, sizeof(skip_));
+
+			if ((WriteBytes(&Media0, ctrl_mv, fpos, btw, &bw,
+					(const uint8_t *)outstr) != FR_OK) ||
+			    (bw != btw)) {
+				log_xputs(MSG_LEVEL_SERIOUS,
+					  "CTRL_MV file write error!");
+				break;
+			} else {
+				fpos = fpos + btw;
+			}
+		}
+	}
+}
+#endif
+
 #endif

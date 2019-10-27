@@ -512,6 +512,11 @@ void __attribute__ ((noreturn)) Start_DiagPrintTask(void const *argument)
 void __attribute__ ((noreturn)) Start_SubscribeTask(void const *argument)
 {
 	(void)argument;
+
+	while (!opentherm_configured) {
+		osDelay(pdMS_TO_TICKS(200U));
+	}
+
 	subscribe_task_init();
 	/* Infinite loop */
 	for (;;) {

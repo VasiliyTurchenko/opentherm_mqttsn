@@ -1283,6 +1283,7 @@ FRESULT f_read(FIL *fp, void *buff, UINT btr, UINT *br)
 	if (fp->media->readFunc((uint8_t*)buff, fp->fileDir.FileAddress + fp->filePtr, to_read) ==
 	    ERROR) {
 		retVal = FR_DISK_ERR;
+		*br = 0U;
 		goto fExit;
 	}
 	fp->filePtr += to_read;
