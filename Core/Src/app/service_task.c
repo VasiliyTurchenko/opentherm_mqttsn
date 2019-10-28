@@ -179,4 +179,10 @@ void service_task_run(void)
 	}
 
 	tftpd_run();
+
+	/* remote reboot */
+	if (DeleteFile(&Media0, "REBOOT") == FR_OK) {
+		log_xputs(MSG_LEVEL_FATAL, "Reboot requested..\n");
+		do {/*loop*/} while (true);
+	}
 }
